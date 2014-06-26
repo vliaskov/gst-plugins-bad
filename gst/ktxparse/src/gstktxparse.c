@@ -115,6 +115,7 @@ gst_ktx_parse_class_init (GstKtxParseTemplateClass * klass)
 {
   GObjectClass *gobject_class;
   GstElementClass *gstelement_class;
+  GstBaseParseClass *parse_class = GST_BASE_PARSE_CLASS (klass);
 
   gobject_class = (GObjectClass *) klass;
   gstelement_class = (GstElementClass *) klass;
@@ -136,6 +137,15 @@ gst_ktx_parse_class_init (GstKtxParseTemplateClass * klass)
       gst_static_pad_get (&src_factory));
   gst_element_class_add_pad_template (gstelement_class,
       gst_static_pad_get (&sink_factory));
+  /* Override BaseParse vfuncs */
+  parse_class->start = GST_DEBUG_FUNCPTR (gst_ktx_parse_start);
+  parse_class->stop = GST_DEBUG_FUNCPTR (gst_ktx_parse_stop);
+  parse_class->handle_frame = GST_DEBUG_FUNCPTR (gst_ktx_parse_handle_frame);
+  parse_class->set_sink_caps = GST_DEBUG_FUNCPTR (gst_ktx_parse_set_caps);
+  parse_class->get_sink_caps = GST_DEBUG_FUNCPTR (gst_ktx_parse_get_caps);
+  parse_class->pre_push_frame =
+      GST_DEBUG_FUNCPTR (gst_ktx_parse_pre_push_frame);
+  parse_class->sink_query = GST_DEBUG_FUNCPTR (gst_ktx_parse_sink_query);
 }
 
 /* initialize the new element
