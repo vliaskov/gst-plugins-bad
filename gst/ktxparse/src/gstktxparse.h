@@ -72,6 +72,24 @@ struct _GstKtxParse
   GstPad *sinkpad, *srcpad;
 
   gboolean silent;
+  gchar identifier[12];
+  gint endianness;
+  gint gl_type;
+  gint gl_typeSize;
+  gint gl_format;
+  gint gl_internalFormat;
+  gint gl_baseInternalFormat;
+  gint pixel_width;
+  gint pixel_height;
+  gint pixel_depth;
+  gint num_array_elements;
+  gint num_faces;
+  gint num_mipmap_levels;
+  gint bytes_keyval_data;
+  gchar *keyval_data;
+  gchar *data;
+
+  GstVideoOverlayComposition *composition;
 };
 
 struct _GstKtxParseClass 
