@@ -48,6 +48,8 @@
 #include "gstglfiltercube.h"
 #include "gstgleffects.h"
 #include "gstglcolorscale.h"
+#include "gstglvideomixer.h"
+#include "gstglfiltershader.h"
 #if HAVE_GRAPHENE
 #include "gstgltransformation.h"
 #endif
@@ -59,11 +61,9 @@
 #include "gstglfilterapp.h"
 #include "gstglfilterblur.h"
 #include "gstglfilterreflectedscreen.h"
-#include "gstglfiltershader.h"
 #include "gstglfiltersobel.h"
 #include "gstgldeinterlace.h"
 #include "gstglmosaic.h"
-#include "gstglvideomixer.h"
 #if HAVE_PNG
 #include "gstgldifferencematte.h"
 #include "gstglbumper.h"
@@ -75,6 +75,10 @@
 
 #ifdef USE_EGL_RPI
 #include <bcm_host.h>
+#endif
+
+#if GST_GL_HAVE_WINDOW_X11
+#include <X11/Xlib.h>
 #endif
 
 #define GST_CAT_DEFAULT gst_gl_gstgl_debug
@@ -89,6 +93,11 @@ plugin_init (GstPlugin * plugin)
 #ifdef USE_EGL_RPI
   GST_DEBUG ("Initialize BCM host");
   bcm_host_init ();
+#endif
+
+#if GST_GL_HAVE_WINDOW_X11
+  if (g_getenv ("GST_GL_XINITTHREADS"))
+    XInitThreads ();
 #endif
 
   if (!gst_element_register (plugin, "glimagesink",
@@ -115,6 +124,15 @@ plugin_init (GstPlugin * plugin)
           GST_RANK_NONE, GST_TYPE_GL_COLORSCALE)) {
     return FALSE;
   }
+
+  if (!gst_element_register (plugin, "glvideomixer",
+          GST_RANK_NONE, GST_TYPE_GL_VIDEO_MIXER)) {
+    return FALSE;
+  }
+  if (!gst_element_register (plugin, "glshader",
+          GST_RANK_NONE, gst_gl_filtershader_get_type ())) {
+    return FALSE;
+  }
 #if GST_GL_HAVE_OPENGL
   if (!gst_element_register (plugin, "gltestsrc",
           GST_RANK_NONE, GST_TYPE_GL_TEST_SRC)) {
@@ -123,11 +141,6 @@ plugin_init (GstPlugin * plugin)
 
   if (!gst_element_register (plugin, "glfilterblur",
           GST_RANK_NONE, gst_gl_filterblur_get_type ())) {
-    return FALSE;
-  }
-
-  if (!gst_element_register (plugin, "glshader",
-          GST_RANK_NONE, gst_gl_filtershader_get_type ())) {
     return FALSE;
   }
 
@@ -163,11 +176,6 @@ plugin_init (GstPlugin * plugin)
 
   if (!gst_element_register (plugin, "glmosaic",
           GST_RANK_NONE, GST_TYPE_GL_MOSAIC)) {
-    return FALSE;
-  }
-
-  if (!gst_element_register (plugin, "glvideomixer",
-          GST_RANK_NONE, GST_TYPE_GL_VIDEO_MIXER)) {
     return FALSE;
   }
 #if HAVE_PNG

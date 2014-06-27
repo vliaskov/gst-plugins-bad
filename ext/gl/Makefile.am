@@ -7,8 +7,6 @@ AM_LIBS = $(GST_BASE_LIBS) $(GST_PLUGINS_BASE_LIBS)
 # full opengl required
 if USE_OPENGL
 OPENGL_SOURCES =  \
-	gstglfiltershader.c \
-	gstglfiltershader.h \
 	gstglfilterblur.c \
 	gstglfilterblur.h \
 	gstglfiltersobel.c \
@@ -29,8 +27,6 @@ OPENGL_SOURCES =  \
 	gstgltestsrc.h \
 	gstglmosaic.c \
 	gstglmosaic.h \
-	gstglvideomixer.c \
-	gstglvideomixer.h \
 	effects/gstgleffectscurves.h \
 	effects/gstgleffectstretch.c \
 	effects/gstgleffecttunnel.c \
@@ -74,6 +70,10 @@ libgstopengl_la_SOURCES = \
 	effects/gstgleffectsqueeze.c \
 	gstglcolorscale.c \
 	gstglcolorscale.h \
+	gstglvideomixer.c \
+	gstglvideomixer.h \
+	gstglfiltershader.c \
+	gstglfiltershader.h \
 	$(OPENGL_SOURCES)
 
 if HAVE_GRAPHENE

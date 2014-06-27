@@ -215,25 +215,29 @@ gst_gl_filter_query (GstBaseTransform * trans, GstPadDirection direction,
     GstQuery * query)
 {
   GstGLFilter *filter;
-  gboolean res;
 
   filter = GST_GL_FILTER (trans);
 
   switch (GST_QUERY_TYPE (query)) {
+    case GST_QUERY_ALLOCATION:
+    {
+      if (direction == GST_PAD_SINK
+          && gst_base_transform_is_passthrough (trans))
+        return gst_pad_peer_query (GST_BASE_TRANSFORM_SRC_PAD (trans), query);
+      break;
+    }
     case GST_QUERY_CONTEXT:
     {
-      res = gst_gl_handle_context_query ((GstElement *) filter, query,
+      return gst_gl_handle_context_query ((GstElement *) filter, query,
           &filter->display);
       break;
     }
     default:
-      res =
-          GST_BASE_TRANSFORM_CLASS (parent_class)->query (trans, direction,
-          query);
       break;
   }
 
-  return res;
+  return GST_BASE_TRANSFORM_CLASS (parent_class)->query (trans, direction,
+      query);;
 }
 
 static void
@@ -728,25 +732,26 @@ gst_gl_filter_transform_caps (GstBaseTransform * bt,
 {
   GstCaps *tmp = NULL;
   GstCaps *result = NULL;
+  GstCaps *glcaps = gst_gl_filter_set_caps_features (caps,
+      GST_CAPS_FEATURE_MEMORY_GL_MEMORY);
+#if GST_GL_HAVE_PLATFORM_EGL
+  GstCaps *eglcaps = gst_gl_filter_set_caps_features (caps,
+      GST_CAPS_FEATURE_MEMORY_EGL_IMAGE);
+#endif
+  GstCaps *uploadcaps = gst_gl_filter_set_caps_features (caps,
+      GST_CAPS_FEATURE_META_GST_VIDEO_GL_TEXTURE_UPLOAD_META);
+  GstCaps *raw_caps =
+      gst_caps_from_string (GST_VIDEO_CAPS_MAKE (GST_GL_COLOR_CONVERT_FORMATS));
+  GstCapsFeatures *f;
 
   tmp = gst_caps_new_empty ();
 
-  if (direction == GST_PAD_SINK) {
-    GstCaps *glcaps = gst_gl_filter_set_caps_features (caps,
-        GST_CAPS_FEATURE_MEMORY_GL_MEMORY);
+  tmp = gst_caps_merge (tmp, glcaps);
 #if GST_GL_HAVE_PLATFORM_EGL
-    GstCaps *eglcaps = gst_gl_filter_set_caps_features (caps,
-        GST_CAPS_FEATURE_MEMORY_EGL_IMAGE);
+  tmp = gst_caps_merge (tmp, eglcaps);
 #endif
-    GstCaps *uploadcaps = gst_gl_filter_set_caps_features (caps,
-        GST_CAPS_FEATURE_META_GST_VIDEO_GL_TEXTURE_UPLOAD_META);
-
-    tmp = gst_caps_merge (tmp, glcaps);
-#if GST_GL_HAVE_PLATFORM_EGL
-    tmp = gst_caps_merge (tmp, eglcaps);
-#endif
-    tmp = gst_caps_merge (tmp, uploadcaps);
-  }
+  tmp = gst_caps_merge (tmp, uploadcaps);
+  tmp = gst_caps_merge (tmp, raw_caps);
 
   tmp = gst_caps_merge (tmp, gst_gl_filter_caps_remove_format_info (caps));
 
@@ -755,6 +760,16 @@ gst_gl_filter_transform_caps (GstBaseTransform * bt,
     gst_caps_unref (tmp);
   } else {
     result = tmp;
+  }
+
+  /* if output still intersects input then prefer the intersection */
+  f = gst_caps_get_features (caps, 0);
+
+  if (!gst_caps_features_is_any (f)
+      && !gst_caps_features_is_equal (f,
+          GST_CAPS_FEATURES_MEMORY_SYSTEM_MEMORY)) {
+    tmp = gst_caps_intersect_full (result, caps, GST_CAPS_INTERSECT_FIRST);
+    result = gst_caps_merge (tmp, result);
   }
 
   GST_DEBUG_OBJECT (bt, "returning caps: %" GST_PTR_FORMAT, result);
@@ -867,19 +882,23 @@ gst_gl_filter_propose_allocation (GstBaseTransform * trans,
 
   if (pool == NULL && need_pool) {
     GstVideoInfo info;
-    GstBufferPool *decide_pool;
+    GstBufferPool *decide_pool = NULL;
 
     if (!gst_video_info_from_caps (&info, caps))
       goto invalid_caps;
 
-    gst_query_parse_allocation (decide_query, &decide_caps, NULL);
-    decide_pool = gst_base_transform_get_buffer_pool (trans);
-    if (GST_IS_GL_BUFFER_POOL (decide_pool)
+    if (decide_query) {
+      gst_query_parse_allocation (decide_query, &decide_caps, NULL);
+      decide_pool = gst_base_transform_get_buffer_pool (trans);
+    }
+
+    if (decide_pool && GST_IS_GL_BUFFER_POOL (decide_pool)
         && gst_caps_is_equal_fixed (decide_caps, caps)) {
       pool = decide_pool;
     } else {
       GST_DEBUG_OBJECT (filter, "create new pool");
-      gst_object_unref (decide_pool);
+      if (decide_pool)
+        gst_object_unref (decide_pool);
       pool = gst_gl_buffer_pool_new (filter->context);
 
       /* the normal size of a frame */

@@ -45,13 +45,6 @@ static gboolean gst_gl_mixer_do_bufferpool (GstGLMixer * mix,
 #define GST_CAT_DEFAULT gst_gl_mixer_debug
 GST_DEBUG_CATEGORY (gst_gl_mixer_debug);
 
-#define GST_GL_MIXER_GET_LOCK(mix) \
-  (GST_GL_MIXER(mix)->lock)
-#define GST_GL_MIXER_LOCK(mix) \
-  (g_mutex_lock(&GST_GL_MIXER_GET_LOCK (mix)))
-#define GST_GL_MIXER_UNLOCK(mix) \
-  (g_mutex_unlock(&GST_GL_MIXER_GET_LOCK (mix)))
-
 static void gst_gl_mixer_pad_get_property (GObject * object, guint prop_id,
     GValue * value, GParamSpec * pspec);
 static void gst_gl_mixer_pad_set_property (GObject * object, guint prop_id,
@@ -426,23 +419,13 @@ gst_gl_mixer_reset (GstGLMixer * mix)
 }
 
 static void
-_free_pad_frame_data (gpointer data)
-{
-  g_slice_free1 (sizeof (GstGLMixerFrameData), data);
-}
-
-static void
 gst_gl_mixer_init (GstGLMixer * mix)
 {
   mix->priv = GST_GL_MIXER_GET_PRIVATE (mix);
-  g_mutex_init (&mix->lock);
   mix->array_buffers = 0;
   mix->display = NULL;
   mix->fbo = 0;
   mix->depthbuffer = 0;
-
-  mix->frames = g_ptr_array_new_full (4, _free_pad_frame_data);
-  mix->array_buffers = g_ptr_array_new_full (4, NULL);
 
   /* initialize variables */
   gst_gl_mixer_reset (mix);
@@ -451,16 +434,8 @@ gst_gl_mixer_init (GstGLMixer * mix)
 static void
 gst_gl_mixer_finalize (GObject * object)
 {
-  GstGLMixer *mix = GST_GL_MIXER (object);
-
-  g_mutex_clear (&mix->lock);
-
-  g_ptr_array_free (mix->frames, TRUE);
-  g_ptr_array_free (mix->array_buffers, TRUE);
-
   G_OBJECT_CLASS (parent_class)->finalize (object);
 }
-
 
 static void
 gst_gl_mixer_set_context (GstElement * element, GstContext * context)
@@ -533,7 +508,12 @@ gst_gl_mixer_query_caps (GstPad * pad, GstAggregator * agg, GstQuery * query)
           "framerate", GST_TYPE_FRACTION_RANGE, 0, 1, G_MAXINT, 1, NULL);
     }
   }
+
+  if (filter)
+    caps = gst_caps_intersect_full (filter, caps, GST_CAPS_INTERSECT_FIRST);
+
   gst_query_set_caps_result (query, caps);
+  gst_caps_unref (caps);
 
   return TRUE;
 }
@@ -1023,7 +1003,6 @@ gst_gl_mixer_start (GstAggregator * agg)
 static gboolean
 gst_gl_mixer_stop (GstAggregator * agg)
 {
-  guint i;
   GstGLMixer *mix = GST_GL_MIXER (agg);
   GstGLMixerClass *mixer_class = GST_GL_MIXER_GET_CLASS (mix);
 
@@ -1031,9 +1010,10 @@ gst_gl_mixer_stop (GstAggregator * agg)
     return FALSE;
 
   GST_OBJECT_LOCK (agg);
-  for (i = 0; i < GST_ELEMENT (agg)->numsinkpads; i++) {
-    g_slice_free1 (sizeof (GstGLMixerFrameData), mix->frames->pdata[i]);
-  }
+  g_ptr_array_free (mix->frames, TRUE);
+  mix->frames = NULL;
+  g_ptr_array_free (mix->array_buffers, TRUE);
+  mix->array_buffers = NULL;
   GST_OBJECT_UNLOCK (agg);
 
   if (mixer_class->reset)
