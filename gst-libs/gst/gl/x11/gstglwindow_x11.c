@@ -44,7 +44,8 @@ G_DEFINE_TYPE (GstGLWindowX11, gst_gl_window_x11, GST_GL_TYPE_WINDOW);
 static int TrappedErrorCode = 0;
 static int (*old_error_handler) (Display *, XErrorEvent *);
 
-gboolean gst_gl_window_x11_handle_event (GstGLWindowX11 * window_x11);
+gboolean gst_gl_window_x11_handle_event (GstGLWindowX11 * window_x11, gpointer
+		data);
 
 enum
 {
@@ -75,6 +76,7 @@ gboolean gst_gl_window_x11_create_context (GstGLWindow * window,
     GstGLAPI gl_api, guintptr external_gl_context, GError ** error);
 gboolean gst_gl_window_x11_open (GstGLWindow * window, GError ** error);
 void gst_gl_window_x11_close (GstGLWindow * window);
+GSource * gst_gl_window_x11_get_event_source (GstGLWindow * window);
 
 static void
 gst_gl_window_x11_finalize (GObject * object)
@@ -107,6 +109,7 @@ gst_gl_window_x11_class_init (GstGLWindowX11Class * klass)
       GST_DEBUG_FUNCPTR (gst_gl_window_x11_send_message_async);
   window_class->open = GST_DEBUG_FUNCPTR (gst_gl_window_x11_open);
   window_class->close = GST_DEBUG_FUNCPTR (gst_gl_window_x11_close);
+  window_class->get_input_event_source = GST_DEBUG_FUNCPTR (gst_gl_window_x11_get_event_source);
 }
 
 static void
@@ -172,6 +175,7 @@ gst_gl_window_x11_open (GstGLWindow * window, GError ** error)
   window_x11->loop = g_main_loop_new (window_x11->main_context, FALSE);
 
   g_source_attach (window_x11->x11_source, window_x11->main_context);
+
 
   window_x11->allow_extra_expose_events = TRUE;
 
@@ -294,6 +298,13 @@ gst_gl_window_x11_close (GstGLWindow * window)
   window_x11->main_context = NULL;
 
   window_x11->running = FALSE;
+}
+
+GSource *
+gst_gl_window_x11_get_event_source (GstGLWindow * window)
+{
+  GstGLWindowX11 *window_x11 = GST_GL_WINDOW_X11 (window);
+  return window_x11->x11_source;
 }
 
 static void
@@ -482,18 +493,20 @@ event_type_to_string (guint type)
 }
 
 gboolean
-gst_gl_window_x11_handle_event (GstGLWindowX11 * window_x11)
+gst_gl_window_x11_handle_event (GstGLWindowX11 * window_x11, gpointer data)
 {
   GstGLContext *context;
   GstGLContextClass *context_class;
   GstGLWindow *window;
   gboolean ret = TRUE;
+  const char *key_str = NULL;
 
   window = GST_GL_WINDOW (window_x11);
 
   if (g_main_loop_is_running (window_x11->loop)
       && XPending (window_x11->device)) {
     XEvent event;
+    KeySym keysym;
 
     /* XSendEvent (which are called in other threads) are done from another display structure */
     XNextEvent (window_x11->device, &event);
@@ -559,7 +572,27 @@ gst_gl_window_x11_handle_event (GstGLWindowX11 * window_x11)
       case VisibilityNotify:
         /* actually nothing to do here */
         break;
-
+      case KeyPress:
+      case KeyRelease:
+        if (data) {
+                key_str = XKeysymToString (keysym);
+              GST_DEBUG ("key %d pressed over window at %d,%d (%s)",
+                  event.xkey.keycode, event.xkey.x, event.xkey.y, key_str);
+              gst_navigation_send_key_event (GST_NAVIGATION (data),
+                  event.type == KeyPress ? "key-press" : "key-release", key_str);
+        }
+        break;
+      case ButtonPress:
+      case ButtonRelease:
+        if (data) {
+              GST_DEBUG ("key %d pressed over window at %d,%d (%s)",
+                  event.xbutton.button, event.xbutton.x, event.xbutton.y);
+              gst_navigation_send_mouse_event (GST_NAVIGATION (data),
+                  event.type == ButtonPress ? "mouse-button-press" :
+            "mouse-button-release", event.xbutton.button, event.xbutton.x,
+            event.xbutton.y);
+        }
+        break;
       default:
         GST_DEBUG ("unknown XEvent type: %u", event.type);
         break;

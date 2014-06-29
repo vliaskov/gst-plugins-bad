@@ -123,6 +123,7 @@ struct _GstGLWindowClass {
 
   gboolean (*open)               (GstGLWindow *window, GError **error);
   void     (*close)              (GstGLWindow *window);
+  GSource* (*get_input_event_source)  (GstGLWindow *window);
 
   /*< private >*/
   gpointer _reserved[GST_PADDING];
@@ -138,6 +139,7 @@ GstGLWindow * gst_gl_window_new  (GstGLDisplay *display);
 void     gst_gl_window_set_draw_callback    (GstGLWindow *window, GstGLWindowCB callback, gpointer data, GDestroyNotify destroy_notify);
 void     gst_gl_window_set_resize_callback  (GstGLWindow *window, GstGLWindowResizeCB callback, gpointer data, GDestroyNotify destroy_notify);
 void     gst_gl_window_set_close_callback   (GstGLWindow *window, GstGLWindowCB callback, gpointer data, GDestroyNotify destroy_notify);
+void     gst_gl_window_set_input_event_callback    (GstGLWindow *window, GstGLWindowCB callback, gpointer data, GDestroyNotify destroy_notify);
 
 void     gst_gl_window_set_window_handle    (GstGLWindow *window, guintptr handle);
 guintptr gst_gl_window_get_window_handle    (GstGLWindow *window);
