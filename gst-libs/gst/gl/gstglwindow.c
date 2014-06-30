@@ -500,6 +500,38 @@ gst_gl_window_set_close_callback (GstGLWindow * window, GstGLWindowCB callback,
 }
 
 /**
+ * gst_gl_window_set_input_event_callback:
+ * @window: a #GstGLWindow
+ * @callback: (scope notified): function to invoke
+ * @data: (closure): data to invoke @callback with
+ * @destroy_notify: (destroy): called when @data is not needed any more
+ *
+ * Sets the input event callback called everytime gst_gl_window_draw() is called
+ */
+void
+gst_gl_window_set_input_event_callback (GstGLWindow * window,
+    GstGLWindowCB callback, gpointer data, GDestroyNotify destroy_notify)
+{
+  GSource *source;
+  GstGLWindowClass *window_class;
+  GST_DEBUG ("enter %s", __func__);
+
+  g_return_if_fail (GST_GL_IS_WINDOW (window));
+
+  GST_GL_WINDOW_LOCK (window);
+
+  window_class = GST_GL_WINDOW_GET_CLASS (window);
+  source = window_class->get_input_event_source (window);
+  GST_DEBUG ("source set callback?");
+  if (source != NULL) {
+    g_source_set_callback (source, callback, data, NULL);
+    GST_DEBUG ("source set callback YES");
+  }
+
+  GST_GL_WINDOW_UNLOCK (window);
+}
+
+/**
  * gst_gl_window_is_running:
  * @window: a #GstGLWindow
  *
@@ -599,6 +631,13 @@ gst_gl_dummy_window_run (GstGLWindow * window)
   GstGLDummyWindow *dummy = (GstGLDummyWindow *) window;
 
   g_main_loop_run (dummy->loop);
+}
+
+static GSource *
+gst_gl_dummy_window_get_input_event_source (GstGLWindow * window)
+{
+  GstGLDummyWindow *dummy = (GstGLDummyWindow *) window;
+  return NULL;
 }
 
 typedef struct _GstGLMessage
@@ -716,6 +755,8 @@ gst_gl_dummy_window_class_init (GstGLDummyWindowClass * klass)
       GST_DEBUG_FUNCPTR (gst_gl_dummy_window_send_message_async);
   window_class->open = GST_DEBUG_FUNCPTR (gst_gl_dummy_window_open);
   window_class->close = GST_DEBUG_FUNCPTR (gst_gl_dummy_window_close);
+  window_class->get_input_event_source =
+      GST_DEBUG_FUNCPTR (gst_gl_dummy_window_get_input_event_source);
 }
 
 static void
