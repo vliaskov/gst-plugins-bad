@@ -28,7 +28,8 @@
 #include "x11_event_source.h"
 #include "gstgldisplay_x11.h"
 
-extern gboolean gst_gl_window_x11_handle_event (GstGLWindowX11 * window_x11);
+extern gboolean gst_gl_window_x11_handle_event (GstGLWindowX11 * window_x11,
+  gpointer data);
 
 typedef struct _X11EventSource
 {
@@ -67,7 +68,7 @@ x11_event_source_dispatch (GSource * base, GSourceFunc callback, gpointer data)
 {
   X11EventSource *source = (X11EventSource *) base;
 
-  gboolean ret = gst_gl_window_x11_handle_event (source->window);
+  gboolean ret = gst_gl_window_x11_handle_event (source->window, data);
 
   if (callback)
     callback (data);
