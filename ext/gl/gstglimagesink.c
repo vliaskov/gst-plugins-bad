@@ -196,11 +196,10 @@ gst_glimage_sink_navigation_send_event (GstNavigation * navigation, GstStructure
 
   pad = gst_pad_get_peer (GST_VIDEO_SINK_PAD (sink));
 
-  //if (GST_IS_PAD (pad) {// && GST_IS_EVENT (event)) {
+  if (GST_IS_PAD (pad) && GST_IS_EVENT (event))
     gst_pad_send_event (pad, event);
 
-    gst_object_unref (pad);
-  //}
+  gst_object_unref (pad);
 }
 
 static void
@@ -461,7 +460,8 @@ _ensure_gl_setup (GstGLImageSink * gl_sink)
         GST_GL_WINDOW_CB (gst_glimage_sink_on_close),
         gst_object_ref (gl_sink), (GDestroyNotify) gst_object_unref);
     gst_gl_window_set_input_event_callback (window,
-        GST_GL_WINDOW_CB (gst_glimage_sink_on_input_event),
+        NULL,
+        //GST_GL_WINDOW_CB (gst_glimage_sink_on_input_event),
         gst_object_ref (gl_sink), (GDestroyNotify) gst_object_unref);
 
     gst_object_unref (window);
@@ -1216,6 +1216,7 @@ gst_glimage_sink_on_close (GstGLImageSink * gl_sink)
 static void
 gst_glimage_sink_on_input_event (GstGLImageSink * gl_sink)
 {
+  GST_DEBUG ("enter %s", __func__);
 }
 
 static gboolean

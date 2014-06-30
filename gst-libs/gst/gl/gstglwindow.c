@@ -514,6 +514,7 @@ gst_gl_window_set_input_event_callback (GstGLWindow * window, GstGLWindowCB call
 {
   GSource * source;
   GstGLWindowClass *window_class;
+  GST_DEBUG ("enter %s", __func__);
 
   g_return_if_fail (GST_GL_IS_WINDOW (window));
 
@@ -521,8 +522,11 @@ gst_gl_window_set_input_event_callback (GstGLWindow * window, GstGLWindowCB call
 
   window_class = GST_GL_WINDOW_GET_CLASS (window);
   source = window_class->get_input_event_source(window);
-  if (source != NULL)
+  GST_DEBUG ("source set callback?");
+  if (source != NULL) {
     g_source_set_callback (source, callback, data, NULL);
+    GST_DEBUG ("source set callback YES");
+  }
 
   GST_GL_WINDOW_UNLOCK (window);
 }
