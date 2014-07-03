@@ -31,6 +31,8 @@
 #include "x11_event_source.h"
 #include "gstglwindow_x11.h"
 #include "gstgldisplay_x11.h"
+/* for XkbKeycodeToKeysym */
+#include <X11/XKBlib.h>
 
 #define GST_GL_WINDOW_X11_GET_PRIVATE(o)  \
   (G_TYPE_INSTANCE_GET_PRIVATE((o), GST_GL_TYPE_WINDOW_X11, GstGLWindowX11Private))
@@ -173,6 +175,7 @@ gst_gl_window_x11_open (GstGLWindow * window, GError ** error)
 
   g_source_attach (window_x11->x11_source, window_x11->main_context);
 
+
   window_x11->allow_extra_expose_events = TRUE;
 
   return TRUE;
@@ -205,7 +208,8 @@ gst_gl_window_x11_create_window (GstGLWindowX11 * window_x11)
       window_x11->visual_info->bits_per_rgb);
 
   win_attr.event_mask =
-      StructureNotifyMask | ExposureMask | VisibilityChangeMask;
+      StructureNotifyMask | ExposureMask | VisibilityChangeMask | KeyPressMask |
+      KeyReleaseMask | ButtonPressMask | ButtonReleaseMask | PointerMotionMask;
   win_attr.do_not_propagate_mask = NoEventMask;
 
   win_attr.background_pixmap = None;
@@ -248,6 +252,7 @@ gst_gl_window_x11_create_window (GstGLWindowX11 * window_x11)
 
   XSetWMProperties (window_x11->device, window_x11->internal_win_id,
       &text_property, &text_property, 0, 0, NULL, &wm_hints, NULL);
+
 
   XFree (text_property.value);
 
@@ -476,6 +481,16 @@ event_type_to_string (guint type)
       return "SelectionRequest";
     case ClientMessage:
       return "ClientMessage";
+    case KeyPress:
+      return "KeyPressRelease";
+    case KeyRelease:
+      return "KeyRelease";
+    case ButtonPress:
+      return "ButtonPress";
+    case ButtonRelease:
+      return "ButtonRelease";
+    case MotionNotify:
+      return "MotionNotify";
     default:
       return "unknown";
   }
@@ -488,12 +503,19 @@ gst_gl_window_x11_handle_event (GstGLWindowX11 * window_x11)
   GstGLContextClass *context_class;
   GstGLWindow *window;
   gboolean ret = TRUE;
+  const char *key_str = NULL;
+  XEvent event;
+  KeySym keysym;
 
   window = GST_GL_WINDOW (window_x11);
+  context = gst_gl_window_get_context (window);
+  context_class = GST_GL_CONTEXT_GET_CLASS (context);
+
+  GST_DEBUG ("enter %s", __func__);
 
   if (g_main_loop_is_running (window_x11->loop)
       && XPending (window_x11->device)) {
-    XEvent event;
+
 
     /* XSendEvent (which are called in other threads) are done from another display structure */
     XNextEvent (window_x11->device, &event);
@@ -501,6 +523,7 @@ gst_gl_window_x11_handle_event (GstGLWindowX11 * window_x11)
     window_x11->allow_extra_expose_events = XPending (window_x11->device) <= 2;
 
     GST_LOG ("got event %s", event_type_to_string (event.type));
+    GST_DEBUG ("got event %s", event_type_to_string (event.type));
 
     switch (event.type) {
       case ClientMessage:
@@ -559,7 +582,30 @@ gst_gl_window_x11_handle_event (GstGLWindowX11 * window_x11)
       case VisibilityNotify:
         /* actually nothing to do here */
         break;
-
+      case KeyPress:
+      case KeyRelease:
+        keysym = XkbKeycodeToKeysym (window_x11->device,
+            event.xkey.keycode, 0, 0);
+        key_str = XKeysymToString (keysym);
+        GST_DEBUG ("input event key %d pressed over window at %d,%d (%s)",
+            event.xkey.keycode, event.xkey.x, event.xkey.y, key_str);
+        g_signal_emit_by_name (window, "key-event",
+            event.type == KeyPress ? "key-press" : "key-release", key_str);
+        break;
+      case ButtonPress:
+      case ButtonRelease:
+        GST_DEBUG ("input event mouse button %d pressed over window at %d,%d",
+            event.xbutton.button, event.xbutton.x, event.xbutton.y);
+        g_signal_emit_by_name (window, "mouse-button-event",
+            event.type == KeyPress ? "button-press" : "button-release",
+            event.xbutton.button, event.xbutton.x, event.xbutton.y);
+        break;
+      case MotionNotify:
+        GST_DEBUG ("input event pointer moved over window at %d,%d",
+            event.xmotion.x, event.xmotion.y);
+        /*gst_navigation_send_mouse_event (GST_NAVIGATION (data),
+            "mouse-move", 0, event.xmotion.x, event.xmotion.y);*/
+        break;
       default:
         GST_DEBUG ("unknown XEvent type: %u", event.type);
         break;

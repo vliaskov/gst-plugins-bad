@@ -84,6 +84,7 @@
 #endif
 
 #include <gst/video/videooverlay.h>
+#include <gst/video/navigation.h>
 
 #include "gstglimagesink.h"
 
@@ -146,6 +147,7 @@ static void gst_glimage_sink_video_overlay_init (GstVideoOverlayInterface *
 static void gst_glimage_sink_set_window_handle (GstVideoOverlay * overlay,
     guintptr id);
 static void gst_glimage_sink_expose (GstVideoOverlay * overlay);
+static void gst_glimage_sink_on_input_event (GstGLImageSink * gl_sink);
 
 static GstStaticPadTemplate gst_glimage_sink_template =
     GST_STATIC_PAD_TEMPLATE ("sink",
@@ -182,10 +184,36 @@ enum
 
 static guint gst_glimage_sink_signals[LAST_SIGNAL] = { 0 };
 
+static void
+gst_glimage_sink_navigation_send_event (GstNavigation * navigation, GstStructure
+    * structure)
+{
+  GstGLImageSink *sink = GST_GLIMAGE_SINK (navigation);
+  GstEvent *event = NULL;
+  GstPad *pad = NULL;
+
+  event = gst_event_new_navigation (structure);
+
+  pad = gst_pad_get_peer (GST_VIDEO_SINK_PAD (sink));
+
+  if (GST_IS_PAD (pad) && GST_IS_EVENT (event))
+    gst_pad_send_event (pad, event);
+
+  gst_object_unref (pad);
+}
+
+static void
+gst_glimage_sink_navigation_interface_init (GstNavigationInterface * iface)
+{
+  iface->send_event = gst_glimage_sink_navigation_send_event;
+}
+
 #define gst_glimage_sink_parent_class parent_class
 G_DEFINE_TYPE_WITH_CODE (GstGLImageSink, gst_glimage_sink,
     GST_TYPE_VIDEO_SINK, G_IMPLEMENT_INTERFACE (GST_TYPE_VIDEO_OVERLAY,
         gst_glimage_sink_video_overlay_init);
+    G_IMPLEMENT_INTERFACE (GST_TYPE_NAVIGATION,
+        gst_glimage_sink_navigation_interface_init);
     GST_DEBUG_CATEGORY_INIT (gst_debug_glimage_sink, "glimagesink", 0,
         "OpenGL Video Sink"));
 
@@ -284,6 +312,7 @@ gst_glimage_sink_class_init (GstGLImageSinkClass * klass)
 
   gstvideosink_class->show_frame =
       GST_DEBUG_FUNCPTR (gst_glimage_sink_show_frame);
+
 }
 
 static void
@@ -390,6 +419,26 @@ gst_glimage_sink_get_property (GObject * object, guint prop_id,
   }
 }
 
+static void
+gst_glimage_sink_key_event_cb (GstGLWindow *window, char *event_name, char
+    *key_string, GstGLImageSink * gl_sink)
+{
+        GST_DEBUG ("GLIMAGESINK input event %s key %s",
+            event_name, key_string);
+  gst_navigation_send_key_event (GST_NAVIGATION (gl_sink),
+      event_name, key_string);
+}
+
+static void
+gst_glimage_sink_mouse_event_cb (GstGLImageSink *window, char *event_name,
+    guint button, double posx, double posy, GstGLImageSink * gl_sink)
+{
+        GST_DEBUG ("GLIMAGESINK input event mouse %s button %d pressed over window at %d,%d",
+            event_name, button, posx, posy);
+  gst_navigation_send_mouse_event (GST_NAVIGATION (gl_sink),
+      event_name, button, posx, posy);
+}
+
 static gboolean
 _ensure_gl_setup (GstGLImageSink * gl_sink)
 {
@@ -431,6 +480,10 @@ _ensure_gl_setup (GstGLImageSink * gl_sink)
     gst_gl_window_set_close_callback (window,
         GST_GL_WINDOW_CB (gst_glimage_sink_on_close),
         gst_object_ref (gl_sink), (GDestroyNotify) gst_object_unref);
+    g_signal_connect (window, "key-event", G_CALLBACK
+        (gst_glimage_sink_key_event_cb), gl_sink);
+    g_signal_connect (window, "mouse-button-event", G_CALLBACK
+        (gst_glimage_sink_mouse_event_cb), gl_sink);
 
     gst_object_unref (window);
   }

@@ -106,6 +106,16 @@ typedef struct _GstGLDummyWindowCass
 
 GstGLDummyWindow *gst_gl_dummy_window_new (void);
 
+enum
+{
+  SIGNAL_0,
+  EVENT_MOUSE_BUTTON_SIGNAL,
+  EVENT_KEY_SIGNAL,
+  LAST_SIGNAL
+};
+
+static guint gst_glwindow_signals[LAST_SIGNAL] = { 0 };
+
 GQuark
 gst_gl_window_error_quark (void)
 {
@@ -131,6 +141,27 @@ gst_gl_window_class_init (GstGLWindowClass * klass)
   klass->send_message = GST_DEBUG_FUNCPTR (gst_gl_window_default_send_message);
 
   G_OBJECT_CLASS (klass)->finalize = gst_gl_window_finalize;
+
+  /**
+   * GstGLWindow::mouse-event:
+   * @object: the #GstGLWindow
+   * @button: the id of the button
+   * @x: the id of the button
+   * @y: the id of the button
+   *
+   * Will be emitted when an input event is received by the GstGLwindow.
+   *
+   * Returns: whether the texture was redrawn by the signal.  If not, a
+   *          default redraw will occur.
+   */
+  gst_glwindow_signals[EVENT_MOUSE_BUTTON_SIGNAL] =
+      g_signal_new ("mouse-button-event", G_TYPE_FROM_CLASS (klass),
+      G_SIGNAL_RUN_LAST, 0, NULL, NULL, g_cclosure_marshal_generic,
+      G_TYPE_NONE, 4, G_TYPE_STRING, G_TYPE_UINT, G_TYPE_DOUBLE, G_TYPE_DOUBLE);
+  gst_glwindow_signals[EVENT_KEY_SIGNAL] =
+      g_signal_new ("key-event", G_TYPE_FROM_CLASS (klass),
+      G_SIGNAL_RUN_LAST, 0, NULL, NULL, g_cclosure_marshal_generic,
+      G_TYPE_NONE, 2, G_TYPE_STRING, G_TYPE_STRING);
 }
 
 /**
