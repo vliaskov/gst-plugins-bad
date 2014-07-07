@@ -79,6 +79,9 @@ G_DEFINE_ABSTRACT_TYPE (GstGLWindow, gst_gl_window, GST_TYPE_OBJECT);
 
 static void gst_gl_window_default_send_message (GstGLWindow * window,
     GstGLWindowCB callback, gpointer data);
+static void
+gst_gl_dummy_get_window_dimensions (GstGLWindow * window, guint *width, guint
+    *height);
 
 struct _GstGLWindowPrivate
 {
@@ -756,6 +759,8 @@ gst_gl_dummy_window_class_init (GstGLDummyWindowClass * klass)
       GST_DEBUG_FUNCPTR (gst_gl_dummy_window_send_message_async);
   window_class->open = GST_DEBUG_FUNCPTR (gst_gl_dummy_window_open);
   window_class->close = GST_DEBUG_FUNCPTR (gst_gl_dummy_window_close);
+  window_class->get_window_dimensions =
+      GST_DEBUG_FUNCPTR (gst_gl_dummy_get_window_dimensions);
 }
 
 static void
@@ -784,4 +789,11 @@ gst_gl_window_send_mouse_event (GstGLWindow * window, char *event_type,
 {
   g_signal_emit (window, gst_gl_window_signals[EVENT_MOUSE_SIGNAL], 0,
       event_type, button, posx, posy);
+}
+
+static void
+gst_gl_dummy_get_window_dimensions (GstGLWindow * window, guint *width, guint
+    *height)
+{
+ 
 }
