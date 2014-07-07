@@ -88,7 +88,8 @@ struct _GstKtxParse
   gint bytes_keyval_data;
   gchar *keyval_data;
   gchar *data;
-
+  
+  gboolean parsed_header;
   GstVideoOverlayComposition *composition;
 };
 

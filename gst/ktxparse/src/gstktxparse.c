@@ -2,7 +2,7 @@
  * GStreamer
  * Copyright (C) 2005 Thomas Vander Stichele <thomas@apestaart.org>
  * Copyright (C) 2005 Ronald S. Bultje <rbultje@ronald.bitfreak.net>
- * Copyright (C) YEAR AUTHOR_NAME AUTHOR_EMAIL
+ * Copyright (C) 2014
  * 
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -146,6 +146,8 @@ gst_ktx_parse_class_init (GstKtxParseTemplateClass * klass)
   parse_class->pre_push_frame =
       GST_DEBUG_FUNCPTR (gst_ktx_parse_pre_push_frame);
   parse_class->sink_query = GST_DEBUG_FUNCPTR (gst_ktx_parse_sink_query);
+  parse_class->sink_event = GST_DEBUG_FUNCPTR (gst_ktx_parse_event);
+  parse_class->src_event = GST_DEBUG_FUNCPTR (gst_ktx_parse_src_event);
 }
 
 /* initialize the new element
@@ -167,7 +169,7 @@ gst_ktx_parse_init (GstKtxParseTemplate * filter)
   filter->srcpad = gst_pad_new_from_static_template (&src_factory, "src");
   GST_PAD_SET_PROXY_CAPS (filter->srcpad);
   gst_element_add_pad (GST_ELEMENT (filter), filter->srcpad);
-
+  filter->parsed_header = FALSE;
   filter->silent = FALSE;
 }
 
@@ -201,6 +203,37 @@ gst_ktx_parse_get_property (GObject * object, guint prop_id,
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
       break;
   }
+}
+
+static gboolean
+gst_ktx_parse_set_caps (GstBaseParse * parse, GstCaps * caps)
+{
+  return TRUE;
+}
+
+
+static GstCaps *
+gst_ktx_parse_get_caps (GstBaseParse * parse, GstCaps * filter)
+{
+  return NULL;
+}
+
+static GstFlowReturn gst_ktx_parse_pre_push_frame (GstBaseParse * parse,
+    GstBaseParseFrame * frame)
+{
+  return GST_FLOW_OK;
+}
+
+static gboolean
+gst_ktx_parse_event (GstBaseParse * parse, GstEvent * event)
+{
+  return TRUE;
+}
+
+static gboolean
+gst_ktx_parse_src_event (GstBaseParse * parse, GstEvent * event)
+{
+  return TRUE;
 }
 
 /* GstElement vmethod implementations */
@@ -250,6 +283,60 @@ gst_ktx_parse_chain (GstPad * pad, GstObject * parent, GstBuffer * buf)
   return gst_pad_push (filter->srcpad, buf);
 }
 
+static gboolean
+gst_ktx_parse_start (GstBaseParse * parse)
+{
+  GstKtxParse *ktxparse = GST_MPEG4VIDEO_PARSE (parse);
+
+  GST_DEBUG_OBJECT (parse, "start");
+
+  gst_ktx_parse_reset (ktxparse);
+  /* at least this much for a valid frame */
+  gst_base_parse_set_min_frame_size (parse, 6);
+
+  return TRUE;
+}
+
+static gboolean
+gst_ktx_parse_stop (GstBaseParse * parse)
+{
+  GstKtxParse *ktxparse = GST_MPEG4VIDEO_PARSE (parse);
+
+  GST_DEBUG_OBJECT (parse, "stop");
+
+  gst_ktx_parse_reset (ktxparse);
+
+  return TRUE;
+}
+
+static boolean
+gst_ktx_parse (GstMpeg4Packet *packet,
+    gboolean skip_user_data,
+    const guint8 *data,
+    guint offset,
+    gsize size)
+{
+  return TRUE;
+}
+
+static GstFlowReturn
+gst_ktx_parse_handle_frame (GstBaseParse * parse,
+    GstBaseParseFrame * frame, gint * skipsize)
+{
+  GstKtxParse *ktxparse = GST_KTX_PARSE (parse);
+  GstMapInfo map;
+  guint8 *data = NULL;
+  gsize size;
+
+  gst_buffer_map (frame->buffer, &map, GST_MAP_READ);
+  data = map.data;
+  size = map.size;
+  if (ktxparse->parsed_header) {
+  }
+  /* parse header */
+  else {
+  }
+}
 
 /* entry point to initialize the plug-in
  * initialize the plug-in itself
