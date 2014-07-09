@@ -72,6 +72,8 @@ struct _GstKtxParse
   GstPad *sinkpad, *srcpad;
 
   gboolean silent;
+  /* 12 + sizeofint * 13 */
+  /* 64 */
   gchar identifier[12];
   gint endianness;
   gint gl_type;

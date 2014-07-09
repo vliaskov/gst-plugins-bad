@@ -159,10 +159,10 @@ static void
 gst_ktx_parse_init (GstKtxParseTemplate * filter)
 {
   filter->sinkpad = gst_pad_new_from_static_template (&sink_factory, "sink");
-  gst_pad_set_event_function (filter->sinkpad,
+  /*gst_pad_set_event_function (filter->sinkpad,
                               GST_DEBUG_FUNCPTR(gst_ktx_parse_sink_event));
   gst_pad_set_chain_function (filter->sinkpad,
-                              GST_DEBUG_FUNCPTR(gst_ktx_parse_chain));
+                              GST_DEBUG_FUNCPTR(gst_ktx_parse_chain));*/
   GST_PAD_SET_PROXY_CAPS (filter->sinkpad);
   gst_element_add_pad (GST_ELEMENT (filter), filter->sinkpad);
 
@@ -319,6 +319,34 @@ gst_ktx_parse (GstMpeg4Packet *packet,
   return TRUE;
 }
 
+static boolean
+gst_ktx_parse_header (GstBaseParse * parse, GstMapInfo map)
+{
+  GstKtxParse *ktxparse = GST_KTX_PARSE (parse);
+  gchar *id = (gchar*) map.data;
+  gint *data = (gint*) map.data;
+  data += 3;
+  /* header size */
+  if (map.size < 64)
+    return FALSE;
+  for (i = 0; i < 12; i++)
+    ktxparse->identifier[i] = id[i];
+  ktxparse->endianness = data[0];
+  ktxparse->gl_type = data[1];
+  ktxparse->gl_typeSize = data[2];
+  ktxparse->gl_format = data[3];
+  ktxparse->gl_internalFormat = data[4];
+  ktxparse->gl_baseInternalFormat = data[5];
+  ktxparse->pixel_width = data[6];
+  ktxparse->pixel_height = data[7];
+  ktxparse->pixel_depth = data[8];
+  ktxparse->num_array_elements = data[9];
+  ktxparse->num_faces = data[10];
+  ktxparse->num_mipmap_levels = data[11];
+  ktxparse->bytes_keyval_data = data[12];
+  return TRUE;
+}
+
 static GstFlowReturn
 gst_ktx_parse_handle_frame (GstBaseParse * parse,
     GstBaseParseFrame * frame, gint * skipsize)
@@ -334,8 +362,11 @@ gst_ktx_parse_handle_frame (GstBaseParse * parse,
   if (ktxparse->parsed_header) {
   }
   /* parse header */
-  else {
+  else if (gst_ktx_parse_header (parse, map) == FALSE)
+   GST_DEBUG (); 
+   return GST_FLOW_ERROR; 
   }
+  return GST_FLOW_OK;
 }
 
 /* entry point to initialize the plug-in
