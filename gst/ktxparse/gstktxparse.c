@@ -97,7 +97,7 @@ static GstStaticPadTemplate src_factory = GST_STATIC_PAD_TEMPLATE ("src",
     );
 
 #define gst_ktx_parse_parent_class parent_class
-G_DEFINE_TYPE (GstKtxParseTemplate, gst_ktx_parse, GST_TYPE_ELEMENT);
+G_DEFINE_TYPE (GstKtxParse, gst_ktx_parse, GST_TYPE_BASE_PARSE);
 
 static void gst_ktx_parse_set_property (GObject * object, guint prop_id,
     const GValue * value, GParamSpec * pspec);
@@ -109,9 +109,29 @@ static GstFlowReturn gst_ktx_parse_chain (GstPad * pad, GstObject * parent, GstB
 
 /* GObject vmethod implementations */
 
+static gboolean
+gst_ktx_parse_start (GstBaseParse * parse);
+static gboolean
+gst_ktx_parse_stop (GstBaseParse * parse);
+static gboolean
+gst_ktx_parse_set_caps (GstBaseParse * parse, GstCaps * caps);
+static GstCaps *
+gst_ktx_parse_get_caps (GstBaseParse * parse, GstCaps * filter);
+static GstFlowReturn gst_ktx_parse_pre_push_frame (GstBaseParse * parse,
+    GstBaseParseFrame * frame);
+static gboolean
+gst_ktx_parse_event (GstBaseParse * parse, GstEvent * event);
+static gboolean
+gst_ktx_parse_src_event (GstBaseParse * parse, GstEvent * event);
+static GstFlowReturn
+gst_ktx_parse_handle_frame (GstBaseParse * parse, GstBaseParseFrame * frame, gint * skipsize);
+
+/* GstElement vmethod implementations */
+
+/* this function handles sink events */
 /* initialize the plugin's class */
 static void
-gst_ktx_parse_class_init (GstKtxParseTemplateClass * klass)
+gst_ktx_parse_class_init (GstKtxParseClass * klass)
 {
   GObjectClass *gobject_class;
   GstElementClass *gstelement_class;
@@ -145,7 +165,7 @@ gst_ktx_parse_class_init (GstKtxParseTemplateClass * klass)
   parse_class->get_sink_caps = GST_DEBUG_FUNCPTR (gst_ktx_parse_get_caps);
   parse_class->pre_push_frame =
       GST_DEBUG_FUNCPTR (gst_ktx_parse_pre_push_frame);
-  parse_class->sink_query = GST_DEBUG_FUNCPTR (gst_ktx_parse_sink_query);
+  //parse_class->sink_query = GST_DEBUG_FUNCPTR (gst_ktx_parse_sink_query);
   parse_class->sink_event = GST_DEBUG_FUNCPTR (gst_ktx_parse_event);
   parse_class->src_event = GST_DEBUG_FUNCPTR (gst_ktx_parse_src_event);
 }
@@ -156,7 +176,7 @@ gst_ktx_parse_class_init (GstKtxParseTemplateClass * klass)
  * initialize instance structure
  */
 static void
-gst_ktx_parse_init (GstKtxParseTemplate * filter)
+gst_ktx_parse_init (GstKtxParse * filter)
 {
   filter->sinkpad = gst_pad_new_from_static_template (&sink_factory, "sink");
   /*gst_pad_set_event_function (filter->sinkpad,
@@ -177,7 +197,7 @@ static void
 gst_ktx_parse_set_property (GObject * object, guint prop_id,
     const GValue * value, GParamSpec * pspec)
 {
-  GstKtxParseTemplate *filter = GST_KTX_PARSE_TEMPLATE (object);
+  GstKtxParse *filter = GST_KTX_PARSE (object);
 
   switch (prop_id) {
     case PROP_SILENT:
@@ -193,7 +213,7 @@ static void
 gst_ktx_parse_get_property (GObject * object, guint prop_id,
     GValue * value, GParamSpec * pspec)
 {
-  GstKtxParseTemplate *filter = GST_KTX_PARSE_TEMPLATE (object);
+  GstKtxParse *filter = GST_KTX_PARSE (object);
 
   switch (prop_id) {
     case PROP_SILENT:
@@ -243,9 +263,9 @@ static gboolean
 gst_ktx_parse_sink_event (GstPad * pad, GstObject * parent, GstEvent * event)
 {
   gboolean ret;
-  GstKtxParseTemplate *filter;
+  GstKtxParse *filter;
 
-  filter = GST_KTX_PARSE_TEMPLATE (parent);
+  filter = GST_KTX_PARSE (parent);
 
   switch (GST_EVENT_TYPE (event)) {
     case GST_EVENT_CAPS:
@@ -272,9 +292,9 @@ gst_ktx_parse_sink_event (GstPad * pad, GstObject * parent, GstEvent * event)
 static GstFlowReturn
 gst_ktx_parse_chain (GstPad * pad, GstObject * parent, GstBuffer * buf)
 {
-  GstKtxParseTemplate *filter;
+  GstKtxParse *filter;
 
-  filter = GST_KTX_PARSE_TEMPLATE (parent);
+  filter = GST_KTX_PARSE (parent);
 
   if (filter->silent == FALSE)
     g_print ("I'm plugged, therefore I'm in.\n");
@@ -286,7 +306,7 @@ gst_ktx_parse_chain (GstPad * pad, GstObject * parent, GstBuffer * buf)
 static gboolean
 gst_ktx_parse_start (GstBaseParse * parse)
 {
-  GstKtxParse *ktxparse = GST_MPEG4VIDEO_PARSE (parse);
+  GstKtxParse *ktxparse = GST_KTX_PARSE (parse);
 
   GST_DEBUG_OBJECT (parse, "start");
 
@@ -300,7 +320,7 @@ gst_ktx_parse_start (GstBaseParse * parse)
 static gboolean
 gst_ktx_parse_stop (GstBaseParse * parse)
 {
-  GstKtxParse *ktxparse = GST_MPEG4VIDEO_PARSE (parse);
+  GstKtxParse *ktxparse = GST_KTX_PARSE (parse);
 
   GST_DEBUG_OBJECT (parse, "stop");
 
@@ -309,7 +329,7 @@ gst_ktx_parse_stop (GstBaseParse * parse)
   return TRUE;
 }
 
-static boolean
+/*static boolean
 gst_ktx_parse (GstMpeg4Packet *packet,
     gboolean skip_user_data,
     const guint8 *data,
@@ -317,14 +337,16 @@ gst_ktx_parse (GstMpeg4Packet *packet,
     gsize size)
 {
   return TRUE;
-}
+}*/
 
-static boolean
+static gboolean
 gst_ktx_parse_header (GstBaseParse * parse, GstMapInfo map)
 {
   GstKtxParse *ktxparse = GST_KTX_PARSE (parse);
   gchar *id = (gchar*) map.data;
   gint *data = (gint*) map.data;
+  int i;
+
   data += 3;
   /* header size */
   if (map.size < 64)
@@ -363,9 +385,7 @@ gst_ktx_parse_handle_frame (GstBaseParse * parse,
   }
   /* parse header */
   else if (gst_ktx_parse_header (parse, map) == FALSE)
-   GST_DEBUG (); 
    return GST_FLOW_ERROR; 
-  }
   return GST_FLOW_OK;
 }
 
@@ -374,17 +394,17 @@ gst_ktx_parse_handle_frame (GstBaseParse * parse,
  * register the element factories and other features
  */
 static gboolean
-plugin_init (GstKtxParse * plugin)
+plugin_init (GstPlugin * plugin)
 {
   /* debug category for fltering log messages
    *
    * exchange the string 'Template plugin' with your description
    */
-  GST_DEBUG_CATEGORY_INIT (gst_ktx_parse_debug, "ktxparse",
-      0, "KTX Parser plugin");
+  //GST_DEBUG_CATEGORY_INIT (gst_ktx_parse_debug, "ktxparse",
+      //0, "KTX Parser plugin");
 
   return gst_element_register (plugin, "plugin", GST_RANK_NONE,
-      GST_TYPE_PLUGIN_TEMPLATE);
+      GST_TYPE_KTX_PARSE);
 }
 
 /* PACKAGE: this is usually set by autotools depending on some _INIT macro
@@ -393,21 +413,18 @@ plugin_init (GstKtxParse * plugin)
  * compile this code. GST_KTX_PARSE_DEFINE needs PACKAGE to be defined.
  */
 #ifndef PACKAGE
-#define PACKAGE "myfirstplugin"
+#define PACKAGE "ktxparse"
 #endif
 
 /* gstreamer looks for this structure to register plugins
  *
  * exchange the string 'Template plugin' with your plugin description
  */
-GST_KTX_PARSE_DEFINE (
-    GST_VERSION_MAJOR,
+GST_PLUGIN_DEFINE ( GST_VERSION_MAJOR,
     GST_VERSION_MINOR,
-    plugin,
+    ktx_parse,
     "KTX Parser plugin",
     plugin_init,
     VERSION,
     "LGPL",
-    "GStreamer",
-    "http://gstreamer.net/"
-)
+    GST_PACKAGE_NAME, GST_PACKAGE_ORIGIN)

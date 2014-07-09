@@ -47,7 +47,8 @@
 #define __GST_KTX_PARSE_H__
 
 #include <gst/gst.h>
-
+#include <gst/base/gstbaseparse.h>
+#include <gst/base/gstbaseparse.h>
 G_BEGIN_DECLS
 
 /* #defines don't like whitespacey bits */
@@ -57,10 +58,6 @@ G_BEGIN_DECLS
   (G_TYPE_CHECK_INSTANCE_CAST((obj),GST_TYPE_PLUGIN,GstKtxParse))
 #define GST_KTX_PARSE_CLASS(klass) \
   (G_TYPE_CHECK_CLASS_CAST((klass),GST_TYPE_PLUGIN,GstKtxParseClass))
-#define GST_IS_PLUGIN(obj) \
-  (G_TYPE_CHECK_INSTANCE_TYPE((obj),GST_TYPE_PLUGIN))
-#define GST_IS_PLUGIN_CLASS(klass) \
-  (G_TYPE_CHECK_CLASS_TYPE((klass),GST_TYPE_PLUGIN))
 
 typedef struct _GstKtxParse      GstKtxParse;
 typedef struct _GstKtxParseClass GstKtxParseClass;
@@ -92,7 +89,7 @@ struct _GstKtxParse
   gchar *data;
   
   gboolean parsed_header;
-  GstVideoOverlayComposition *composition;
+  //GstVideoOverlayComposition *composition;
 };
 
 struct _GstKtxParseClass 
@@ -100,7 +97,6 @@ struct _GstKtxParseClass
   GstElementClass parent_class;
 };
 
-GType gst_plugin_get_type (void);
 
 G_END_DECLS
 
