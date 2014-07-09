@@ -57,6 +57,7 @@ CRUFT_FILES = \
 	$(top_builddir)/gst/flacparse/.libs/*.{so,dll,DLL,dylib} \
 	$(top_builddir)/gst/imagefreeze/.libs/*.{so,dll,DLL,dylib} \
 	$(top_builddir)/gst/mpeg4videoparse/.libs/*.{so,dll,DLL,dylib} \
+	$(top_builddir)/gst/ktxparse/.libs/*.{so,dll,DLL,dylib} \
 	$(top_builddir)/gst/qtmux/.libs/*.{so,dll,DLL,dylib} \
 	$(top_builddir)/gst/rtpmux/.libs/*.{so,dll,DLL,dylib} \
 	$(top_builddir)/gst/rtpvp8/.libs/*.{so,dll,DLL,dylib} \
@@ -92,6 +93,7 @@ CRUFT_DIRS = \
 	$(top_srcdir)/gst/imagefreeze \
 	$(top_srcdir)/gst/invtelecine \
 	$(top_srcdir)/gst/mpeg4videoparse \
+	$(top_srcdir)/gst/ktxparse \
 	$(top_srcdir)/gst/qtmux \
 	$(top_srcdir)/gst/rtpmux \
 	$(top_srcdir)/gst/rtpvp8 \
