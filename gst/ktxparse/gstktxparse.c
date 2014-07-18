@@ -309,8 +309,9 @@ gst_ktx_parse_start (GstBaseParse * parse)
   GstKtxParse *ktxparse = GST_KTX_PARSE (parse);
 
   GST_DEBUG_OBJECT (parse, "start");
+  GST_DEBUG ("%s called", __func__);
 
-  gst_ktx_parse_reset (ktxparse);
+  //gst_ktx_parse_reset (ktxparse);
   /* at least this much for a valid frame */
   gst_base_parse_set_min_frame_size (parse, 6);
 
@@ -324,7 +325,7 @@ gst_ktx_parse_stop (GstBaseParse * parse)
 
   GST_DEBUG_OBJECT (parse, "stop");
 
-  gst_ktx_parse_reset (ktxparse);
+  //gst_ktx_parse_reset (ktxparse);
 
   return TRUE;
 }
@@ -366,6 +367,7 @@ gst_ktx_parse_header (GstBaseParse * parse, GstMapInfo map)
   ktxparse->num_faces = data[10];
   ktxparse->num_mipmap_levels = data[11];
   ktxparse->bytes_keyval_data = data[12];
+  ktxparse->parsed_header = TRUE;
   return TRUE;
 }
 
@@ -377,11 +379,17 @@ gst_ktx_parse_handle_frame (GstBaseParse * parse,
   GstMapInfo map;
   guint8 *data = NULL;
   gsize size;
-
+  GST_DEBUG ("%s called", __func__);
   gst_buffer_map (frame->buffer, &map, GST_MAP_READ);
   data = map.data;
   size = map.size;
   if (ktxparse->parsed_header) {
+    //if (ismipmapped) 
+      //glTexParameteri(target, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_NEAREST);
+    //else  
+      //glTexParameteri(target, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    //glTexParameteri(target, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    //glTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_MODULATE);
   }
   /* parse header */
   else if (gst_ktx_parse_header (parse, map) == FALSE)
@@ -403,7 +411,7 @@ plugin_init (GstPlugin * plugin)
   //GST_DEBUG_CATEGORY_INIT (gst_ktx_parse_debug, "ktxparse",
       //0, "KTX Parser plugin");
 
-  return gst_element_register (plugin, "plugin", GST_RANK_NONE,
+  return gst_element_register (plugin, "ktxparse", GST_RANK_NONE,
       GST_TYPE_KTX_PARSE);
 }
 
