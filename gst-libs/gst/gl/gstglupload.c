@@ -238,7 +238,7 @@ gst_gl_upload_perform_with_buffer (GstGLUpload * upload, GstBuffer * buffer,
   guint texture_ids[] = { 0, 0, 0, 0 };
   gint i;
   gboolean ret;
-
+  GST_DEBUG ("%s called\n", __func__);
   g_return_val_if_fail (upload != NULL, FALSE);
   g_return_val_if_fail (buffer != NULL, FALSE);
   g_return_val_if_fail (tex_id != NULL, FALSE);
@@ -378,6 +378,7 @@ gst_gl_upload_perform_with_gl_texture_upload_meta (GstGLUpload * upload,
   g_return_val_if_fail (upload != NULL, FALSE);
   g_return_val_if_fail (meta != NULL, FALSE);
 
+  GST_DEBUG ("%s called\n", __func__);
   if (meta->texture_orientation !=
       GST_VIDEO_GL_TEXTURE_ORIENTATION_X_NORMAL_Y_NORMAL)
     GST_FIXME_OBJECT (upload, "only x-normal,y-normal textures supported, "
@@ -443,6 +444,7 @@ _gst_gl_upload_perform_with_data_unlocked (GstGLUpload * upload,
 
   g_return_val_if_fail (upload != NULL, FALSE);
   g_return_val_if_fail (texture_id != NULL, FALSE);
+  GST_DEBUG ("%s called\n", __func__);
 
   if (!upload->in_tex[0])
     gst_gl_memory_setup_wrapped (upload->context, &upload->in_info, data,
