@@ -202,12 +202,12 @@ gst_glimage_sink_navigation_send_event (GstNavigation * navigation, GstStructure
 
     event = gst_event_new_navigation (structure);
 
-    window_class->get_window_dimensions (window, &width, &height);
+    /*window_class->get_window_dimensions (window, &width, &height);
 
     xscale = (gdouble) GST_VIDEO_SINK_WIDTH (sink) / width;
     yscale = (gdouble) GST_VIDEO_SINK_HEIGHT (sink) / height;
 
-    /* Converting pointer coordinates to the non scaled geometry */
+    // Converting pointer coordinates to the non scaled geometry 
     if (gst_structure_get_double (structure, "pointer_x", &x)) {
       gst_structure_set (structure, "pointer_x", G_TYPE_DOUBLE,
           (gdouble) x * xscale, NULL);
@@ -215,7 +215,7 @@ gst_glimage_sink_navigation_send_event (GstNavigation * navigation, GstStructure
     if (gst_structure_get_double (structure, "pointer_y", &y)) {
       gst_structure_set (structure, "pointer_y", G_TYPE_DOUBLE,
           (gdouble) y * yscale, NULL);
-    }
+    }*/
 
     gst_pad_send_event (pad, event);
     gst_object_unref (pad);

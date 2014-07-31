@@ -64,6 +64,7 @@ pointer_handle_enter (void *data, struct wl_pointer *pointer, uint32_t serial,
   GstGLWindowWaylandEGL *window_egl = data;
   struct wl_buffer *buffer;
   struct wl_cursor_image *image = NULL;
+  GST_DEBUG ("%s called\n", __func__);
 
   window_egl->display.serial = serial;
 
@@ -85,6 +86,7 @@ pointer_handle_leave (void *data, struct wl_pointer *pointer, uint32_t serial,
 {
   GstGLWindowWaylandEGL *window_egl = data;
   window_egl->display.serial = serial;
+  GST_DEBUG ("%s called\n", __func__);
 }
 
 static void
@@ -92,9 +94,10 @@ pointer_handle_motion (void *data, struct wl_pointer *pointer, uint32_t time,
     wl_fixed_t sx_w, wl_fixed_t sy_w)
 {
   GstGLWindowWaylandEGL *window_egl = data;
+  GST_DEBUG ("%s called\n", __func__);
   GstGLWindow *window = GST_GL_WINDOW (window_egl);
-  GST_DEBUG ("input event mouse motion over window %d %d",
-        sx_w, sy_w);
+  //GST_DEBUG ("input event mouse motion over window %d %d",
+        //sx_w, sy_w);
 
   gst_gl_window_send_mouse_event (window,
         "mouse-button-press",
@@ -109,14 +112,15 @@ pointer_handle_button (void *data, struct wl_pointer *pointer, uint32_t serial,
   GstGLWindowWaylandEGL *window_egl = data;
   GstGLWindow *window = GST_GL_WINDOW (window_egl);
   window_egl->display.serial = serial;
+  GST_DEBUG ("%s called\n", __func__);
 
   if (button == BTN_LEFT && state_w == WL_POINTER_BUTTON_STATE_PRESSED)
     wl_shell_surface_move (window_egl->window.shell_surface,
         window_egl->display.seat, serial);
 
-  GST_DEBUG ("input event mouse button %s %s over window",
-        button == BTN_LEFT ? "left" : "right" ,
-        state_w == WL_POINTER_BUTTON_STATE_PRESSED ? : "pressed", "released");
+  //GST_DEBUG ("input event mouse button %s %s over window",
+    //    button == BTN_LEFT ? "left" : "right" ,
+    //    state_w == WL_POINTER_BUTTON_STATE_PRESSED ? : "pressed", "released");
 
   gst_gl_window_send_mouse_event (window,
         state_w ==
@@ -129,7 +133,62 @@ static void
 pointer_handle_axis (void *data, struct wl_pointer *pointer, uint32_t time,
     uint32_t axis, wl_fixed_t value)
 {
+  GST_DEBUG ("%s called\n", __func__);
 }
+
+void keyboard_keymap(void *data,
+		       struct wl_keyboard *wl_keyboard,
+		       uint32_t format,
+		       int32_t fd,
+		       uint32_t size)
+{
+  GST_DEBUG ("%s called\n", __func__);
+}
+
+void keyboard_enter(void *data,
+		      struct wl_keyboard *wl_keyboard,
+		      uint32_t serial,
+		      struct wl_surface *surface,
+		      struct wl_array *keys)
+{
+  GST_DEBUG ("%s called\n", __func__);
+}
+
+void keyboard_leave(void *data,
+		      struct wl_keyboard *wl_keyboard,
+		      uint32_t serial,
+		      struct wl_surface *surface)
+{
+  GST_DEBUG ("%s called\n", __func__);
+}
+
+void keyboard_key(void *data,
+		    struct wl_keyboard *wl_keyboard,
+		    uint32_t serial,
+		    uint32_t time,
+		    uint32_t key,
+		    uint32_t state)
+{
+  GstGLWindowWaylandEGL *window_egl = data;
+  GstGLWindow *window = GST_GL_WINDOW (window_egl);
+  //const char *key_str = NULL;
+  window_egl->display.serial = serial;
+  GST_DEBUG ("%s called\n", __func__);
+  //gst_gl_window_send_key_event (window,
+   //         state == KeyPress ? "key-press" : "key-release", key_str);
+}
+
+void keyboard_modifiers(void *data,
+			  struct wl_keyboard *wl_keyboard,
+			  uint32_t serial,
+			  uint32_t mods_depressed,
+			  uint32_t mods_latched,
+			  uint32_t mods_locked,
+			  uint32_t group)
+{
+  GST_DEBUG ("%s called\n", __func__);
+}
+
 
 static const struct wl_pointer_listener pointer_listener = {
   pointer_handle_enter,
@@ -137,6 +196,14 @@ static const struct wl_pointer_listener pointer_listener = {
   pointer_handle_motion,
   pointer_handle_button,
   pointer_handle_axis,
+};
+
+static const struct wl_keyboard_listener keyboard_listener = {
+  keyboard_keymap,
+  keyboard_enter,
+  keyboard_leave,
+  keyboard_key,
+  keyboard_modifiers,
 };
 
 static void
@@ -150,15 +217,20 @@ seat_handle_capabilities (void *data, struct wl_seat *seat,
     display->pointer = wl_seat_get_pointer (seat);
     wl_pointer_set_user_data (display->pointer, window_egl);
     wl_pointer_add_listener (display->pointer, &pointer_listener, window_egl);
+
   } else if (!(caps & WL_SEAT_CAPABILITY_POINTER) && display->pointer) {
     wl_pointer_destroy (display->pointer);
     display->pointer = NULL;
   }
+  if (!display->keyboard) {
+    display->keyboard = wl_seat_get_keyboard (seat);
+    wl_keyboard_add_listener (display->keyboard, &keyboard_listener, window_egl);}
+
 #if 0
   if ((caps & WL_SEAT_CAPABILITY_KEYBOARD) && !input->keyboard) {
     input->keyboard = wl_seat_get_keyboard (seat);
     wl_keyboard_set_user_data (input->keyboard, input);
-    wl_keyboard_add_listener (input->keyboard, &keyboard_listener, input);
+    wl_keyboard_add_listener (input->keyboard, &pointer_listener, input);
   } else if (!(caps & WL_SEAT_CAPABILITY_KEYBOARD) && input->keyboard) {
     wl_keyboard_destroy (input->keyboard);
     input->keyboard = NULL;
