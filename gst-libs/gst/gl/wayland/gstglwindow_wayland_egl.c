@@ -56,6 +56,8 @@ static void gst_gl_window_wayland_egl_close (GstGLWindow * window);
 static gboolean gst_gl_window_wayland_egl_open (GstGLWindow * window,
     GError ** error);
 static guintptr gst_gl_window_wayland_egl_get_display (GstGLWindow * window);
+static void gst_gl_window_wayland_egl_get_surface_dimensions (GstGLWindow *
+    window, guint * width, guint * height);
 
 static void
 pointer_handle_enter (void *data, struct wl_pointer *pointer, uint32_t serial,
@@ -91,6 +93,14 @@ static void
 pointer_handle_motion (void *data, struct wl_pointer *pointer, uint32_t time,
     wl_fixed_t sx_w, wl_fixed_t sy_w)
 {
+  GstGLWindowWaylandEGL *window_egl = data;
+  GstGLWindow *window = GST_GL_WINDOW (window_egl);
+  GST_DEBUG ("%s called\n", __func__);
+  /* GST_DEBUG ("input event mouse motion over window %d %d",
+     sx_w, sy_w); */
+
+  gst_gl_window_send_mouse_event (window,
+      "mouse-button-press", 0, (double) sx_w, (double) sy_w);
 }
 
 static void
@@ -98,11 +108,22 @@ pointer_handle_button (void *data, struct wl_pointer *pointer, uint32_t serial,
     uint32_t time, uint32_t button, uint32_t state_w)
 {
   GstGLWindowWaylandEGL *window_egl = data;
+  GstGLWindow *window = GST_GL_WINDOW (window_egl);
   window_egl->display.serial = serial;
 
+  GST_DEBUG ("%s called\n", __func__);
   if (button == BTN_LEFT && state_w == WL_POINTER_BUTTON_STATE_PRESSED)
     wl_shell_surface_move (window_egl->window.shell_surface,
         window_egl->display.seat, serial);
+
+  /* GST_DEBUG ("input event mouse button %s %s over window",
+     button == BTN_LEFT ? "left" : "right" ,
+     state_w == WL_POINTER_BUTTON_STATE_PRESSED ? : "pressed", "released"); */
+
+  gst_gl_window_send_mouse_event (window,
+      state_w ==
+      WL_POINTER_BUTTON_STATE_PRESSED ? "mouse-button-press" :
+      "mouse-button-release", button, (double) 0, (double) 0);
 }
 
 static void
@@ -281,6 +302,8 @@ gst_gl_window_wayland_egl_class_init (GstGLWindowWaylandEGLClass * klass)
   window_class->open = GST_DEBUG_FUNCPTR (gst_gl_window_wayland_egl_open);
   window_class->get_display =
       GST_DEBUG_FUNCPTR (gst_gl_window_wayland_egl_get_display);
+  window_class->get_surface_dimensions =
+      GST_DEBUG_FUNCPTR (gst_gl_window_wayland_egl_get_surface_dimensions);
 }
 
 static void
@@ -517,4 +540,19 @@ gst_gl_window_wayland_egl_get_display (GstGLWindow * window)
   window_egl = GST_GL_WINDOW_WAYLAND_EGL (window);
 
   return (guintptr) window_egl->display.display;
+}
+
+static void
+gst_gl_window_wayland_egl_get_surface_dimensions (GstGLWindow * window,
+    guint * width, guint * height)
+{
+  int w, h;
+  GstGLWindowWaylandEGL *window_egl;
+
+  window_egl = GST_GL_WINDOW_WAYLAND_EGL (window);
+  wl_egl_window_get_attached_size (window_egl->window.native, &w, &h);
+  if (width != NULL)
+    *width = w;
+  if (height != NULL)
+    *height = h;
 }
