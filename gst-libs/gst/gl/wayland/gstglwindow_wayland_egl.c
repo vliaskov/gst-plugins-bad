@@ -140,6 +140,61 @@ static const struct wl_pointer_listener pointer_listener = {
   pointer_handle_axis,
 };
 
+void
+keyboard_keymap (void *data,
+    struct wl_keyboard *wl_keyboard, uint32_t format, int32_t fd, uint32_t size)
+{
+  GST_DEBUG ("%s called\n", __func__);
+}
+
+void
+keyboard_enter (void *data,
+    struct wl_keyboard *wl_keyboard,
+    uint32_t serial, struct wl_surface *surface, struct wl_array *keys)
+{
+  GST_DEBUG ("%s called\n", __func__);
+}
+
+void
+keyboard_leave (void *data,
+    struct wl_keyboard *wl_keyboard,
+    uint32_t serial, struct wl_surface *surface)
+{
+  GST_DEBUG ("%s called\n", __func__);
+}
+
+void
+keyboard_key (void *data,
+    struct wl_keyboard *wl_keyboard,
+    uint32_t serial, uint32_t time, uint32_t key, uint32_t state)
+{
+  GstGLWindowWaylandEGL *window_egl = data;
+  GstGLWindow *window = GST_GL_WINDOW (window_egl);
+  //const char *key_str = NULL;
+  window_egl->display.serial = serial;
+  GST_DEBUG ("%s called\n", __func__);
+  //gst_gl_window_send_key_event (window,
+  //         state == KeyPress ? "key-press" : "key-release", key_str);
+}
+
+void
+keyboard_modifiers (void *data,
+    struct wl_keyboard *wl_keyboard,
+    uint32_t serial,
+    uint32_t mods_depressed,
+    uint32_t mods_latched, uint32_t mods_locked, uint32_t group)
+{
+  GST_DEBUG ("%s called\n", __func__);
+}
+
+static const struct wl_keyboard_listener keyboard_listener = {
+  keyboard_keymap,
+  keyboard_enter,
+  keyboard_leave,
+  keyboard_key,
+  keyboard_modifiers,
+};
+
 static void
 seat_handle_capabilities (void *data, struct wl_seat *seat,
     enum wl_seat_capability caps)
@@ -154,6 +209,11 @@ seat_handle_capabilities (void *data, struct wl_seat *seat,
   } else if (!(caps & WL_SEAT_CAPABILITY_POINTER) && display->pointer) {
     wl_pointer_destroy (display->pointer);
     display->pointer = NULL;
+  }
+  if (!display->keyboard) {
+    display->keyboard = wl_seat_get_keyboard (seat);
+    wl_keyboard_add_listener (display->keyboard, &keyboard_listener,
+        window_egl);
   }
 #if 0
   if ((caps & WL_SEAT_CAPABILITY_KEYBOARD) && !input->keyboard) {
