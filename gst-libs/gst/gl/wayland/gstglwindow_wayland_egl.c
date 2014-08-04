@@ -170,11 +170,16 @@ keyboard_key (void *data,
 {
   GstGLWindowWaylandEGL *window_egl = data;
   GstGLWindow *window = GST_GL_WINDOW (window_egl);
-  //const char *key_str = NULL;
+  char key_str[64];
+  KeySym keysym;
+
+  keysym = xkb_state_key_get_one_sym (wl_keyboard->xkb_state, key + 8);
+  xkb_keysym_get_name (keysym, key_str, sizeof (key_str));
   window_egl->display.serial = serial;
   GST_DEBUG ("%s called\n", __func__);
-  //gst_gl_window_send_key_event (window,
-  //         state == KeyPress ? "key-press" : "key-release", key_str);
+  gst_gl_window_send_key_event (window,
+      state == WL_KEYBOARD_KEY_STATE_PRESSED ? "key-press" : "key-release",
+      key_str);
 }
 
 void
