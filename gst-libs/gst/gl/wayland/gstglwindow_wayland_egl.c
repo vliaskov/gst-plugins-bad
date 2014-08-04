@@ -94,8 +94,7 @@ pointer_handle_motion (void *data, struct wl_pointer *pointer, uint32_t time,
   GstGLWindowWaylandEGL *window_egl = data;
   GstGLWindow *window = GST_GL_WINDOW (window_egl);
   GST_DEBUG ("%s called\n", __func__);
-  /* GST_DEBUG ("input event mouse motion over window %d %d",
-     sx_w, sy_w); */
+  GST_DEBUG ("input event mouse motion over window %d %d", sx_w, sy_w);
 
   gst_gl_window_send_mouse_event (window,
       "mouse-button-press", 0, (double) sx_w, (double) sy_w);
@@ -109,14 +108,13 @@ pointer_handle_button (void *data, struct wl_pointer *pointer, uint32_t serial,
   GstGLWindow *window = GST_GL_WINDOW (window_egl);
   window_egl->display.serial = serial;
 
-  GST_DEBUG ("%s called\n", __func__);
   if (button == BTN_LEFT && state_w == WL_POINTER_BUTTON_STATE_PRESSED)
     wl_shell_surface_move (window_egl->window.shell_surface,
         window_egl->display.seat, serial);
 
-  /* GST_DEBUG ("input event mouse button %s %s over window",
-     button == BTN_LEFT ? "left" : "right" ,
-     state_w == WL_POINTER_BUTTON_STATE_PRESSED ? : "pressed", "released"); */
+  GST_DEBUG ("input event mouse button %s %s over window",
+      button == BTN_LEFT ? "left" : "right",
+      state_w == WL_POINTER_BUTTON_STATE_PRESSED ? "pressed" : "released");
 
   gst_gl_window_send_mouse_event (window,
       state_w ==
