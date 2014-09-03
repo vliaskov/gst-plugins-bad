@@ -66,6 +66,17 @@ struct window {
   struct wl_callback        *callback;
   int fullscreen, configured;
   int window_width, window_height;
+
+};
+
+struct input {
+  struct xkb_state *xkb_state;
+  struct xkb_keymap *xkb_keymap;
+  struct xkb_context *xkb_context;
+	//xkb_mod_mask_t control_mask;
+	//xkb_mod_mask_t alt_mask;
+	//xkb_mod_mask_t shift_mask;
+  wl_fixed_t  motion_x, motion_y; /* last motion event on window */
 };
 
 struct _GstGLWindowWaylandEGL {
@@ -74,6 +85,7 @@ struct _GstGLWindowWaylandEGL {
 
   struct display display;
   struct window  window;
+  struct input  input;
 
   GSource *wl_source;
   GMainContext *main_context;

@@ -26,6 +26,8 @@
 #endif
 
 #include <linux/input.h>
+#include <sys/mman.h>
+#include <xkbcommon/xkbcommon.h>
 
 #include "wayland_event_source.h"
 
@@ -56,6 +58,30 @@ static void gst_gl_window_wayland_egl_close (GstGLWindow * window);
 static gboolean gst_gl_window_wayland_egl_open (GstGLWindow * window,
     GError ** error);
 static guintptr gst_gl_window_wayland_egl_get_display (GstGLWindow * window);
+static void gst_gl_window_wayland_egl_get_surface_dimensions (GstGLWindow *
+    window, guint * width, guint * height);
+void
+keyboard_enter (void *data,
+    struct wl_keyboard *wl_keyboard,
+    uint32_t serial, struct wl_surface *surface, struct wl_array *keys);
+void
+keyboard_leave (void *data,
+    struct wl_keyboard *wl_keyboard,
+    uint32_t serial, struct wl_surface *surface);
+void
+keyboard_keymap (void *data,
+    struct wl_keyboard *wl_keyboard, uint32_t format, int32_t fd, uint32_t size);
+void
+keyboard_key (void *data,
+    struct wl_keyboard *wl_keyboard,
+    uint32_t serial, uint32_t time, uint32_t key, uint32_t state);
+void
+keyboard_modifiers (void *data,
+    struct wl_keyboard *wl_keyboard,
+    uint32_t serial,
+    uint32_t mods_depressed,
+    uint32_t mods_latched, uint32_t mods_locked, uint32_t group);
+
 
 static void
 pointer_handle_enter (void *data, struct wl_pointer *pointer, uint32_t serial,
@@ -91,6 +117,15 @@ static void
 pointer_handle_motion (void *data, struct wl_pointer *pointer, uint32_t time,
     wl_fixed_t sx_w, wl_fixed_t sy_w)
 {
+  GstGLWindowWaylandEGL *window_egl = data;
+  GstGLWindow *window = GST_GL_WINDOW (window_egl);
+  // GST_DEBUG ("input event mouse motion over window %d %d",
+   //  sx_w, sy_w); 
+
+  window_egl->input.motion_x = sx_w;
+  window_egl->input.motion_y = sy_w;
+  gst_gl_window_send_mouse_event (window,
+      "mouse-button-press", 0, (double) sx_w, (double) sy_w);
 }
 
 static void
@@ -98,11 +133,23 @@ pointer_handle_button (void *data, struct wl_pointer *pointer, uint32_t serial,
     uint32_t time, uint32_t button, uint32_t state_w)
 {
   GstGLWindowWaylandEGL *window_egl = data;
+  GstGLWindow *window = GST_GL_WINDOW (window_egl);
   window_egl->display.serial = serial;
 
+  GST_DEBUG ("%s called\n", __func__);
   if (button == BTN_LEFT && state_w == WL_POINTER_BUTTON_STATE_PRESSED)
     wl_shell_surface_move (window_egl->window.shell_surface,
         window_egl->display.seat, serial);
+
+  /* GST_DEBUG ("input event mouse button %s %s over window",
+     button == BTN_LEFT ? "left" : "right" ,
+     state_w == WL_POINTER_BUTTON_STATE_PRESSED ? : "pressed", "released"); */
+
+  gst_gl_window_send_mouse_event (window,
+      state_w ==
+      WL_POINTER_BUTTON_STATE_PRESSED ? "mouse-button-press" :
+      "mouse-button-release", button, (double) window_egl->input.motion_x,
+      (double) window_egl->input.motion_y);
 }
 
 static void
@@ -117,6 +164,113 @@ static const struct wl_pointer_listener pointer_listener = {
   pointer_handle_motion,
   pointer_handle_button,
   pointer_handle_axis,
+};
+
+void
+keyboard_keymap (void *data,
+    struct wl_keyboard *wl_keyboard, uint32_t format, int32_t fd, uint32_t size)
+{
+  GstGLWindowWaylandEGL *window_egl = data;
+	struct xkb_keymap *keymap;
+	struct xkb_state *state;
+	char *map_str;
+
+	if (format != WL_KEYBOARD_KEYMAP_FORMAT_XKB_V1) {
+		close(fd);
+		return;
+	}
+
+	map_str = mmap(NULL, size, PROT_READ, MAP_SHARED, fd, 0);
+	if (map_str == MAP_FAILED) {
+		close(fd);
+		return;
+	}
+
+	keymap = xkb_map_new_from_string(window_egl->input.xkb_context,
+					 map_str,
+					 XKB_KEYMAP_FORMAT_TEXT_V1,
+					 0);
+	munmap(map_str, size);
+	close(fd);
+
+	if (!keymap) {
+		fprintf(stderr, "failed to compile keymap\n");
+		return;
+	}
+
+	state = xkb_state_new(keymap);
+	if (!state) {
+		fprintf(stderr, "failed to create XKB state\n");
+		xkb_map_unref(keymap);
+		return;
+	}
+
+	xkb_keymap_unref(window_egl->input.xkb_keymap);
+	xkb_state_unref(window_egl->input.xkb_state);
+	window_egl->input.xkb_keymap = keymap;
+	window_egl->input.xkb_state = state;
+
+	/* window_egl->input.xkb_control_mask =
+		1 << xkb_map_mod_get_index(window_egl->input.xkb_keymap, "Control");
+	window_egl->input.xkb_alt_mask =
+		1 << xkb_map_mod_get_index(window_egl->input.xkb__keymap, "Mod1");
+	window_egl->input.xkb_shift_mask =
+		1 << xkb_map_mod_get_index(window_egl->input.xkb_keymap, "Shift");
+  */
+  GST_DEBUG ("%s called\n", __func__);
+}
+
+void
+keyboard_enter (void *data,
+    struct wl_keyboard *wl_keyboard,
+    uint32_t serial, struct wl_surface *surface, struct wl_array *keys)
+{
+  GST_DEBUG ("%s called\n", __func__);
+}
+
+void
+keyboard_leave (void *data,
+    struct wl_keyboard *wl_keyboard,
+    uint32_t serial, struct wl_surface *surface)
+{
+  GST_DEBUG ("%s called\n", __func__);
+}
+
+void
+keyboard_key (void *data,
+    struct wl_keyboard *wl_keyboard,
+    uint32_t serial, uint32_t time, uint32_t key, uint32_t state)
+{
+  GstGLWindowWaylandEGL *window_egl = data;
+  GstGLWindow *window = GST_GL_WINDOW (window_egl);
+  char key_str[64];
+  KeySym keysym;
+
+  keysym = xkb_state_key_get_one_sym (window_egl->input.xkb_state, key + 8);
+  xkb_keysym_get_name (keysym, key_str, sizeof (key_str));
+  window_egl->display.serial = serial;
+  GST_DEBUG ("%s called\n", __func__);
+  gst_gl_window_send_key_event (window,
+      state == WL_KEYBOARD_KEY_STATE_PRESSED ? "key-press" : "key-release",
+      key_str);
+}
+
+void
+keyboard_modifiers (void *data,
+    struct wl_keyboard *wl_keyboard,
+    uint32_t serial,
+    uint32_t mods_depressed,
+    uint32_t mods_latched, uint32_t mods_locked, uint32_t group)
+{
+  GST_DEBUG ("%s called\n", __func__);
+}
+
+static const struct wl_keyboard_listener keyboard_listener = {
+  keyboard_keymap,
+  keyboard_enter,
+  keyboard_leave,
+  keyboard_key,
+  keyboard_modifiers,
 };
 
 static void
@@ -134,16 +288,21 @@ seat_handle_capabilities (void *data, struct wl_seat *seat,
     wl_pointer_destroy (display->pointer);
     display->pointer = NULL;
   }
-#if 0
-  if ((caps & WL_SEAT_CAPABILITY_KEYBOARD) && !input->keyboard) {
-    input->keyboard = wl_seat_get_keyboard (seat);
-    wl_keyboard_set_user_data (input->keyboard, input);
-    wl_keyboard_add_listener (input->keyboard, &keyboard_listener, input);
-  } else if (!(caps & WL_SEAT_CAPABILITY_KEYBOARD) && input->keyboard) {
-    wl_keyboard_destroy (input->keyboard);
-    input->keyboard = NULL;
+  /* if (!display->keyboard) {
+    display->keyboard = wl_seat_get_keyboard (seat);
+    wl_keyboard_add_listener (display->keyboard, &keyboard_listener,
+        window_egl);
+  } */
+
+  if ((caps & WL_SEAT_CAPABILITY_KEYBOARD) && !display->keyboard) {
+    display->keyboard = wl_seat_get_keyboard (seat);
+    wl_keyboard_set_user_data (display->keyboard, display);
+    wl_keyboard_add_listener (display->keyboard, &keyboard_listener, display);
+  } else if (!(caps & WL_SEAT_CAPABILITY_KEYBOARD) && display->keyboard) {
+    wl_keyboard_destroy (display->keyboard);
+    display->keyboard = NULL;
   }
-#endif
+
 }
 
 static const struct wl_seat_listener seat_listener = {
@@ -281,6 +440,8 @@ gst_gl_window_wayland_egl_class_init (GstGLWindowWaylandEGLClass * klass)
   window_class->open = GST_DEBUG_FUNCPTR (gst_gl_window_wayland_egl_open);
   window_class->get_display =
       GST_DEBUG_FUNCPTR (gst_gl_window_wayland_egl_get_display);
+  window_class->get_surface_dimensions =
+      GST_DEBUG_FUNCPTR (gst_gl_window_wayland_egl_get_surface_dimensions);
 }
 
 static void
@@ -346,6 +507,13 @@ gst_gl_window_wayland_egl_open (GstGLWindow * window, GError ** error)
   wl_registry_add_listener (window_egl->display.registry, &registry_listener,
       window_egl);
 
+	window_egl->input.xkb_context = xkb_context_new(0);
+	if (window_egl->input.xkb_context == NULL) {
+    g_set_error (error, GST_GL_WINDOW_ERROR,
+        GST_GL_WINDOW_ERROR_RESOURCE_UNAVAILABLE,
+		    "Failed to create XKB context\n");
+    goto error;
+	}
   wl_display_dispatch (window_egl->display.display);
 
   create_surface (window_egl);
@@ -517,4 +685,19 @@ gst_gl_window_wayland_egl_get_display (GstGLWindow * window)
   window_egl = GST_GL_WINDOW_WAYLAND_EGL (window);
 
   return (guintptr) window_egl->display.display;
+}
+
+static void
+gst_gl_window_wayland_egl_get_surface_dimensions (GstGLWindow * window,
+    guint * width, guint * height)
+{
+  int w, h;
+  GstGLWindowWaylandEGL *window_egl;
+
+  window_egl = GST_GL_WINDOW_WAYLAND_EGL (window);
+  wl_egl_window_get_attached_size (window_egl->window.native, &w, &h);
+  if (width != NULL)
+    *width = w;
+  if (height != NULL)
+    *height = h;
 }
