@@ -40,8 +40,9 @@
 #include <gst/base/gstadapter.h>
 #include <gst/video/video.h>
 #include <gst/audio/audio.h>
-#include <gst/gl/gstglbuffer.h>
+#include <gst/gl/gstglbufferpool.h>
 #include <gst/gl/gstgldisplay.h>
+#include <gst/gl/gl.h>
 
 #include <libvisual/libvisual.h>
 
@@ -76,8 +77,11 @@ struct _GstVisualGL
   GstPad *srcpad;
   GstSegment segment;
 
+  GstBufferPool *pool;
+
   /* GL stuff */
   GstGLDisplay *display;
+  GstGLContext *context;
   GLuint fbo;
   GLuint depthbuffer;
   GLuint midtexture;
@@ -133,13 +137,16 @@ GType gst_visual_gl_get_type (void);
 static GstStaticPadTemplate src_template = GST_STATIC_PAD_TEMPLATE ("src",
     GST_PAD_SRC,
     GST_PAD_ALWAYS,
-    GST_STATIC_CAPS (GST_GL_VIDEO_CAPS)
+    GST_STATIC_CAPS (GST_VIDEO_CAPS_MAKE_WITH_FEATURES
+        (GST_CAPS_FEATURE_MEMORY_GL_MEMORY,
+            "RGBA") "; "
+            GST_VIDEO_CAPS_MAKE (GST_GL_COLOR_CONVERT_FORMATS))
     );
 
 static GstStaticPadTemplate sink_template = GST_STATIC_PAD_TEMPLATE ("sink",
     GST_PAD_SINK,
     GST_PAD_ALWAYS,
-    GST_STATIC_CAPS ("audio/x-raw-int, "
+    GST_STATIC_CAPS ("audio/x-raw, "
         "width = (int) 16, "
         "depth = (int) 16, "
         "endianness = (int) BYTE_ORDER, "
@@ -154,14 +161,14 @@ static void gst_visual_gl_dispose (GObject * object);
 
 static GstStateChangeReturn gst_visual_gl_change_state (GstElement * element,
     GstStateChange transition);
-static GstFlowReturn gst_visual_gl_chain (GstPad * pad, GstBuffer * buffer);
-static gboolean gst_visual_gl_sink_event (GstPad * pad, GstEvent * event);
-static gboolean gst_visual_gl_src_event (GstPad * pad, GstEvent * event);
+static GstFlowReturn gst_visual_gl_chain (GstPad * pad, GstObject * parent, GstBuffer * buffer);
+static gboolean gst_visual_gl_sink_event (GstPad * pad, GstObject * parent, GstEvent * event);
+static gboolean gst_visual_gl_src_event (GstPad * pad, GstObject * parent, GstEvent * event);
 
-static gboolean gst_visual_gl_src_query (GstPad * pad, GstQuery * query);
+static gboolean gst_visual_gl_src_query (GstPad * pad, GstObject * parent, GstQuery * query);
 
-static gboolean gst_visual_gl_sink_setcaps (GstPad * pad, GstCaps * caps);
-static gboolean gst_visual_gl_src_setcaps (GstPad * pad, GstCaps * caps);
+static gboolean gst_visual_gl_sink_setcaps (GstPad * pad, GstObject *parent, GstCaps * caps);
+static gboolean gst_visual_gl_src_setcaps (GstPad * pad, GstObject *parent, GstCaps * caps);
 static GstCaps *gst_visual_gl_getcaps (GstPad * pad);
 static void libvisual_log_handler (const char *message, const char *funcname,
     void *priv);
@@ -234,16 +241,17 @@ gst_visual_gl_class_init (gpointer g_class, gpointer class_data)
 static void
 gst_visual_gl_init (GstVisualGL * visual)
 {
+  GstStructure *structure;
   /* create the sink and src pads */
   visual->sinkpad = gst_pad_new_from_static_template (&sink_template, "sink");
-  gst_pad_set_setcaps_function (visual->sinkpad, gst_visual_gl_sink_setcaps);
+  //gst_pad_set_setcaps_function (visual->sinkpad, gst_visual_gl_sink_setcaps);
   gst_pad_set_chain_function (visual->sinkpad, gst_visual_gl_chain);
   gst_pad_set_event_function (visual->sinkpad, gst_visual_gl_sink_event);
   gst_element_add_pad (GST_ELEMENT (visual), visual->sinkpad);
 
   visual->srcpad = gst_pad_new_from_static_template (&src_template, "src");
-  gst_pad_set_setcaps_function (visual->srcpad, gst_visual_gl_src_setcaps);
-  gst_pad_set_getcaps_function (visual->srcpad, gst_visual_gl_getcaps);
+  //gst_pad_set_setcaps_function (visual->srcpad, gst_visual_gl_src_setcaps);
+  //gst_pad_set_getcaps_function (visual->srcpad, gst_visual_gl_getcaps);
   gst_pad_set_event_function (visual->srcpad, gst_visual_gl_src_event);
   gst_pad_set_query_function (visual->srcpad, gst_visual_gl_src_query);
   gst_element_add_pad (GST_ELEMENT (visual), visual->srcpad);
@@ -253,6 +261,7 @@ gst_visual_gl_init (GstVisualGL * visual)
   visual->actor = NULL;
 
   visual->display = NULL;
+  visual->context = NULL;
   visual->fbo = 0;
   visual->depthbuffer = 0;
   visual->midtexture = 0;
@@ -261,6 +270,10 @@ gst_visual_gl_init (GstVisualGL * visual)
   visual->gl_depth_func = GL_LESS;
   visual->is_enabled_gl_blend = GL_FALSE;
   visual->gl_blend_src_alpha = GL_ONE;
+  visual->pool = gst_gl_buffer_pool_new (visual->context);
+  structure = gst_buffer_pool_get_config (visual->pool);
+  //gst_buffer_pool_config_set_params (structure, caps, 1024 * 768 * 3, 2, 0);
+  //gst_buffer_pool_set_config (visual->pool, structure); 
 }
 
 static void
@@ -331,7 +344,9 @@ gst_visual_gl_getcaps (GstPad * pad)
   GST_DEBUG_OBJECT (visual, "libvisual-gl plugin supports depths %u (0x%04x)",
       depths, depths);
   /* only do GL output */
-  gst_caps_append (ret, gst_caps_from_string (GST_GL_VIDEO_CAPS));
+  gst_caps_append (ret, gst_caps_from_string (
+    GST_VIDEO_CAPS_MAKE_WITH_FEATURES (GST_CAPS_FEATURE_MEMORY_GL_MEMORY,
+            "RGBA")));
 
 beach:
 
@@ -341,7 +356,7 @@ beach:
 }
 
 static gboolean
-gst_visual_gl_src_setcaps (GstPad * pad, GstCaps * caps)
+gst_visual_gl_src_setcaps (GstPad * pad, GstObject *parent, GstCaps * caps)
 {
   GstVisualGL *visual = GST_VISUAL_GL (gst_pad_get_parent (pad));
   GstStructure *structure;
@@ -364,10 +379,10 @@ gst_visual_gl_src_setcaps (GstPad * pad, GstCaps * caps)
   visual->duration =
       gst_util_uint64_scale_int (GST_SECOND, visual->fps_d, visual->fps_n);
 
-  gst_gl_display_gen_texture (visual->display, &visual->midtexture,
-      visual->width, visual->height);
+  gst_gl_context_gen_texture (visual->context, &visual->midtexture,
+      GST_VIDEO_FORMAT_RGBA, visual->width, visual->height);
 
-  gst_gl_display_gen_fbo (visual->display, visual->width, visual->height,
+  gst_gl_context_gen_fbo (visual->context, visual->width, visual->height,
       &visual->fbo, &visual->depthbuffer);
 
   gst_object_unref (visual);
@@ -383,15 +398,18 @@ error:
 }
 
 static gboolean
-gst_visual_gl_sink_setcaps (GstPad * pad, GstCaps * caps)
+gst_visual_gl_sink_setcaps (GstPad * pad, GstObject * parent, GstCaps * caps)
 {
   GstVisualGL *visual = GST_VISUAL_GL (gst_pad_get_parent (pad));
   GstStructure *structure;
+
 
   structure = gst_caps_get_structure (caps, 0);
 
   gst_structure_get_int (structure, "channels", &visual->channels);
   gst_structure_get_int (structure, "rate", &visual->rate);
+
+
 
   switch (visual->rate) {
     case 8000:
@@ -439,10 +457,10 @@ gst_vis_gl_src_negotiate (GstVisualGL * visual)
   GstStructure *structure;
   GstCaps *caps;
 
-  caps = gst_pad_get_caps (visual->srcpad);
+  caps = gst_pad_get_allowed_caps (visual->srcpad);
 
   /* see what the peer can do */
-  othercaps = gst_pad_peer_get_caps (visual->srcpad);
+  othercaps = gst_pad_peer_query_caps (visual->srcpad, NULL);
   if (othercaps) {
     target = gst_caps_intersect (othercaps, caps);
     gst_caps_unref (othercaps);
@@ -466,7 +484,7 @@ gst_vis_gl_src_negotiate (GstVisualGL * visual)
   gst_structure_fixate_field_nearest_int (structure, "height", DEFAULT_HEIGHT);
   gst_structure_fixate_field_nearest_fraction (structure, "framerate",
       DEFAULT_FPS_N, DEFAULT_FPS_D);
-
+ 
   gst_pad_set_caps (visual->srcpad, target);
   gst_caps_unref (target);
 
@@ -483,9 +501,10 @@ no_format:
 }
 
 static gboolean
-gst_visual_gl_sink_event (GstPad * pad, GstEvent * event)
+gst_visual_gl_sink_event (GstPad * pad, GstObject * parent, GstEvent * event)
 {
   GstVisualGL *visual;
+  GstCaps *caps;
   gboolean res;
 
   visual = GST_VISUAL_GL (gst_pad_get_parent (pad));
@@ -499,27 +518,31 @@ gst_visual_gl_sink_event (GstPad * pad, GstEvent * event)
       gst_visual_gl_reset (visual);
       res = gst_pad_push_event (visual->srcpad, event);
       break;
-    case GST_EVENT_NEWSEGMENT:
+    case GST_EVENT_SEGMENT:
     {
       GstFormat format;
-      gdouble rate, arate;
+      GstSegment *segment;
+      /*gdouble rate, arate;
       gint64 start, stop, time;
-      gboolean update;
+      gboolean update;*/
 
       /* the newsegment values are used to clip the input samples
        * and to convert the incomming timestamps to running time so
        * we can do QoS */
-      gst_event_parse_new_segment_full (event, &update, &rate, &arate, &format,
-          &start, &stop, &time);
+      gst_event_parse_segment (event, &segment);
 
       /* now configure the values */
-      gst_segment_set_newsegment_full (&visual->segment, update,
-          rate, arate, format, start, stop, time);
+      gst_segment_copy_into (segment, &visual->segment),
 
       /* and forward */
       res = gst_pad_push_event (visual->srcpad, event);
       break;
     }
+    case GST_EVENT_CAPS:
+      GST_DEBUG_OBJECT (visual, "set sinkpad caps");
+      gst_event_parse_caps (event, &caps);
+      gst_visual_gl_sink_setcaps (visual->sinkpad, parent, caps);
+      break;
     default:
       res = gst_pad_push_event (visual->srcpad, event);
       break;
@@ -530,7 +553,7 @@ gst_visual_gl_sink_event (GstPad * pad, GstEvent * event)
 }
 
 static gboolean
-gst_visual_gl_src_event (GstPad * pad, GstEvent * event)
+gst_visual_gl_src_event (GstPad * pad, GstObject *parent, GstEvent * event)
 {
   GstVisualGL *visual;
   gboolean res;
@@ -543,8 +566,9 @@ gst_visual_gl_src_event (GstPad * pad, GstEvent * event)
       gdouble proportion;
       GstClockTimeDiff diff;
       GstClockTime timestamp;
+      GstQOSType type;
 
-      gst_event_parse_qos (event, &proportion, &diff, &timestamp);
+      gst_event_parse_qos (event, &type, &proportion, &diff, &timestamp);
 
       /* save stuff for the _chain function */
       GST_OBJECT_LOCK (visual);
@@ -561,6 +585,11 @@ gst_visual_gl_src_event (GstPad * pad, GstEvent * event)
       res = gst_pad_push_event (visual->sinkpad, event);
       break;
     }
+    case GST_EVENT_CAPS:
+      GST_DEBUG_OBJECT (visual, "set srcpad caps");
+      //gst_event_parse_caps (event, &caps);
+      //gst_visual_gl_sink_setcaps (visual->sinkpad, parent, caps);
+      break;
     default:
       res = gst_pad_push_event (visual->sinkpad, event);
       break;
@@ -571,10 +600,13 @@ gst_visual_gl_src_event (GstPad * pad, GstEvent * event)
 }
 
 static gboolean
-gst_visual_gl_src_query (GstPad * pad, GstQuery * query)
+gst_visual_gl_src_query (GstPad * pad, GstObject *parent, GstQuery * query)
 {
   gboolean res;
   GstVisualGL *visual;
+  GstCaps *target, *caps, *src_caps;
+  GstStructure *config;
+  GstVideoInfo vinfo;
 
   visual = GST_VISUAL_GL (gst_pad_get_parent (pad));
 
@@ -583,6 +615,7 @@ gst_visual_gl_src_query (GstPad * pad, GstQuery * query)
     {
       /* We need to send the query upstream and add the returned latency to our
        * own */
+      GST_DEBUG_OBJECT (visual, "QUERY LATENCY");
       GstClockTime min_latency, max_latency;
       gboolean us_live;
       GstClockTime our_latency;
@@ -619,6 +652,7 @@ gst_visual_gl_src_query (GstPad * pad, GstQuery * query)
     }
     case GST_QUERY_CUSTOM:
     {
+      GST_DEBUG_OBJECT (visual, "QUERY CUSTOM");
       GstStructure *structure = gst_query_get_structure (query);
       gchar *name = gst_element_get_name (visual);
 
@@ -626,11 +660,50 @@ gst_visual_gl_src_query (GstPad * pad, GstQuery * query)
       g_free (name);
 
       if (!res)
-        res = gst_pad_query_default (pad, query);
+        res = gst_pad_query_default (pad, parent, query);
       break;
     }
+    /*case GST_QUERY_ALLOCATION:
+      GST_DEBUG_OBJECT (visual, "QUERY ALLOCATION");
+      break;*/
+    /*case GST_QUERY_CAPS:
+      GST_DEBUG_OBJECT (visual, "QUERY CAPS");
+      gst_query_parse_caps (query, &caps);
+      if (caps == NULL)
+        GST_DEBUG_OBJECT (visual, "failed to get non-null CAPS from CAPS QUERY");
+      if (!gst_video_info_from_caps (&vinfo, caps))
+        GST_DEBUG_OBJECT (visual, "failed to get video info from CAPS QUERY");
+
+      src_caps = gst_pad_get_pad_template_caps (visual->srcpad);
+      //gst_pad_query_caps (visual->srcpad, caps); // this is recursion idiot!
+      if (!src_caps)
+        GST_DEBUG_OBJECT (visual, "failed to set src caps from CAPS QUERY");
+          res = FALSE;
+      if (gst_caps_can_intersect (src_caps, caps))
+        src_caps = gst_caps_intersect (src_caps, caps);
+      if (visual->pool == NULL) {
+        visual->pool = gst_gl_buffer_pool_new (visual->context);
+
+        config = gst_buffer_pool_get_config (visual->pool);
+
+        gst_buffer_pool_config_set_params (config, src_caps, 640*480*3, 2, 0);
+        gst_buffer_pool_set_config (visual->pool, config);
+      }
+      res = TRUE;
+
+      //if (gst_pad_get_current_caps (visual->srcpad) == NULL) {
+      //  caps = gst_pad_get_allowed_caps (visual->srcpad);
+      //  target = gst_caps_copy (caps);
+      //  gst_pad_set_caps (visual->srcpad, target);
+      //}
+      //res = gst_pad_get_current_caps (visual->srcpad);
+      //gst_pad_set_caps (visual->srcpad, gst_caps_copy(gst_pad_get_allowed_caps (visual->srcpad)) );
+      break;*/
     default:
-      res = gst_pad_peer_query (visual->sinkpad, query);
+      GST_DEBUG_OBJECT (visual, "QUERY DEFAULT");
+      //res = gst_pad_peer_query (visual->sinkpad, query);
+      res = gst_pad_query_default (visual->srcpad, parent, query);
+
       break;
   }
 
@@ -643,27 +716,38 @@ gst_visual_gl_src_query (GstPad * pad, GstQuery * query)
  * function will negotiate one. After calling this function, a
  * reverse negotiation could have happened. */
 static GstFlowReturn
-get_buffer (GstVisualGL * visual, GstGLBuffer ** outbuf)
+get_buffer (GstVisualGL * visual, GstBuffer ** outbuf)
 {
+  GstCaps *target, *caps;
   /* we don't know an output format yet, pick one */
-  if (GST_PAD_CAPS (visual->srcpad) == NULL) {
-    if (!gst_vis_gl_src_negotiate (visual))
-      return GST_FLOW_NOT_NEGOTIATED;
+  if (gst_pad_get_current_caps (visual->srcpad) == NULL) {
+    /*if (!gst_vis_gl_src_negotiate (visual))
+      return GST_FLOW_NOT_NEGOTIATED;*/
+
+    /*return GST_FLOW_NOT_NEGOTIATED;
+    caps = gst_pad_get_allowed_caps (visual->srcpad);
+    target = gst_caps_copy (caps);
+    if (target == NULL) 
+      GST_DEBUG_OBJECT (visual, "CAPS NULL");
+    if (!gst_caps_is_fixed (target))
+      GST_DEBUG_OBJECT (visual, "CAPS not FIXED");
+    gst_pad_set_caps (visual->srcpad, target);*/
   }
 
   GST_DEBUG_OBJECT (visual, "allocating output buffer with caps %"
-      GST_PTR_FORMAT, GST_PAD_CAPS (visual->srcpad));
+      GST_PTR_FORMAT, gst_pad_get_current_caps (visual->srcpad));
 
-  *outbuf = gst_gl_buffer_new (visual->display, visual->width, visual->height);
-  if (*outbuf == NULL)
+  gst_buffer_pool_acquire_buffer (visual->pool, outbuf, NULL);
+  if (*outbuf == NULL) {
+    GST_DEBUG_OBJECT (visual, "get_buffer: could not allocate buffer");
     return GST_FLOW_ERROR;
+  }
 
-  gst_buffer_set_caps (GST_BUFFER (*outbuf), GST_PAD_CAPS (visual->srcpad));
   return GST_FLOW_OK;
 }
 
 static void
-actor_setup (GstGLDisplay * display, GstVisualGL * visual)
+actor_setup (GstGLContext * context, GstVisualGL * visual)
 {
   /* save and clear top of the stack */
   glPushAttrib (GL_ALL_ATTRIB_BITS);
@@ -700,7 +784,7 @@ actor_setup (GstGLDisplay * display, GstVisualGL * visual)
 }
 
 static void
-actor_negotiate (GstGLDisplay * display, GstVisualGL * visual)
+actor_negotiate (GstGLContext * context, GstVisualGL * visual)
 {
   gint err = VISUAL_OK;
 
@@ -748,11 +832,11 @@ render_frame (GstVisualGL * visual)
   VisBuffer *lbuf, *rbuf;
   guint16 ldata[VISUAL_SAMPLES], rdata[VISUAL_SAMPLES];
   guint i;
-  gcahr *name;
+  gchar *name;
 
   /* Read VISUAL_SAMPLES samples per channel */
   data =
-      (const guint16 *) gst_adapter_peek (visual->adapter,
+      (const guint16 *) gst_adapter_map (visual->adapter,
       VISUAL_SAMPLES * visual->bps);
 
   lbuf = visual_buffer_new_with_buffer (ldata, sizeof (ldata), NULL);
@@ -802,12 +886,12 @@ render_frame (GstVisualGL * visual)
    * and then rebind it before the final pass. It's done from 2.0.1
    */
   name = gst_element_get_name (GST_ELEMENT (visual));
-  if (g_ascii_strncasecmp (name, "visualglprojectm", 16) == 0
+  /*if (g_ascii_strncasecmp (name, "visualglprojectm", 16) == 0
       && !HAVE_PROJECTM_TAKING_CARE_OF_EXTERNAL_FBO)
-    glBindFramebufferEXT (GL_FRAMEBUFFER_EXT, 0);
+    glBindFramebufferEXT (GL_FRAMEBUFFER_EXT, 0);*/
   g_free (name);
 
-  actor_negotiate (visual->display, visual);
+  actor_negotiate (visual->context, visual);
 
   if (visual->is_enabled_gl_depth_test) {
     glEnable (GL_DEPTH_TEST);
@@ -874,9 +958,9 @@ bottom_up_to_top_down (gint width, gint height, guint texture,
 }
 
 static GstFlowReturn
-gst_visual_gl_chain (GstPad * pad, GstBuffer * buffer)
+gst_visual_gl_chain (GstPad * pad, GstObject *parent, GstBuffer * buffer)
 {
-  GstGLBuffer *outbuf = NULL;
+  GstBuffer *outbuf = NULL;
   GstVisualGL *visual = GST_VISUAL_GL (gst_pad_get_parent (pad));
   GstFlowReturn ret = GST_FLOW_OK;
   guint avail;
@@ -885,7 +969,7 @@ gst_visual_gl_chain (GstPad * pad, GstBuffer * buffer)
 
   /* If we don't have an output format yet, preallocate a buffer to try and
    * set one */
-  if (GST_PAD_CAPS (visual->srcpad) == NULL) {
+  if (gst_pad_get_current_caps (visual->srcpad) == NULL) {
     ret = get_buffer (visual, &outbuf);
     if (ret != GST_FLOW_OK) {
       gst_buffer_unref (buffer);
@@ -900,7 +984,7 @@ gst_visual_gl_chain (GstPad * pad, GstBuffer * buffer)
 
   GST_DEBUG_OBJECT (visual,
       "Input buffer has %d samples, time=%" G_GUINT64_FORMAT,
-      GST_BUFFER_SIZE (buffer) / visual->bps, GST_BUFFER_TIMESTAMP (buffer));
+       gst_buffer_get_size (buffer) / visual->bps, GST_BUFFER_TIMESTAMP (buffer));
 
   gst_adapter_push (visual->adapter, buffer);
 
@@ -922,7 +1006,7 @@ gst_visual_gl_chain (GstPad * pad, GstBuffer * buffer)
       break;
 
     /* get timestamp of the current adapter byte */
-    timestamp = gst_adapter_prev_timestamp (visual->adapter, &dist);
+    timestamp = gst_adapter_prev_pts (visual->adapter, &dist);
     if (GST_CLOCK_TIME_IS_VALID (timestamp)) {
       /* convert bytes to time */
       dist /= visual->bps;
@@ -961,22 +1045,22 @@ gst_visual_gl_chain (GstPad * pad, GstBuffer * buffer)
     }
 
     /* render libvisual plugin to our target */
-    gst_gl_display_use_fbo_v2 (visual->display,
+    gst_gl_context_use_fbo_v2 (visual->context,
         visual->width, visual->height, visual->fbo, visual->depthbuffer,
         visual->midtexture, (GLCB_V2) render_frame, (gpointer *) visual);
 
     /* gst video is top-down whereas opengl plan is bottom up */
-    gst_gl_display_use_fbo (visual->display,
+    /*gst_gl_context_use_fbo (visual->context,
         visual->width, visual->height, visual->fbo, visual->depthbuffer,
         outbuf->texture, (GLCB) bottom_up_to_top_down,
         visual->width, visual->height, visual->midtexture,
         0, visual->width, 0, visual->height, GST_GL_DISPLAY_PROJECTION_ORTHO2D,
-        (gpointer *) visual);
-
+        (gpointer *) visual); */
+     
     GST_BUFFER_TIMESTAMP (outbuf) = timestamp;
     GST_BUFFER_DURATION (outbuf) = visual->duration;
+    ret = gst_pad_push (visual->srcpad, outbuf);
 
-    ret = gst_pad_push (visual->srcpad, GST_BUFFER (outbuf));
     outbuf = NULL;
 
   skip:
@@ -994,7 +1078,7 @@ gst_visual_gl_chain (GstPad * pad, GstBuffer * buffer)
 beach:
 
   if (outbuf != NULL)
-    gst_gl_buffer_unref (outbuf);
+    gst_buffer_unref (outbuf);
 
   gst_object_unref (visual);
 
@@ -1026,7 +1110,7 @@ gst_visual_gl_change_state (GstElement * element, GstStateChange transition)
 
       name = gst_element_get_name (visual);
       structure = gst_structure_new (name, NULL);
-      query = gst_query_new_application (GST_QUERY_CUSTOM, structure);
+      query = gst_query_new_custom (GST_QUERY_CUSTOM, structure);
       g_free (name);
 
       isPerformed = gst_element_query (parent, query);
@@ -1034,14 +1118,16 @@ gst_visual_gl_change_state (GstElement * element, GstStateChange transition)
       if (isPerformed) {
         const GValue *id_value =
             gst_structure_get_value (structure, "gstgldisplay");
-        if (G_VALUE_HOLDS_POINTER (id_value))
+        if (G_VALUE_HOLDS_POINTER (id_value)) {
           /* at least one gl element is after in our gl chain */
+          GST_DEBUG_OBJECT (visual, "GET EXTERNAL DISPLAY"); 
           visual->display =
               gst_object_ref (GST_GL_DISPLAY (g_value_get_pointer (id_value)));
+        }
         else {
           /* this gl filter is a sink in terms of the gl chain */
           visual->display = gst_gl_display_new ();
-          gst_gl_display_create_context (visual->display, 0);
+          visual->context = gst_gl_context_new (visual->display);
           //TODO visual->external_gl_context);
         }
 
@@ -1056,8 +1142,8 @@ gst_visual_gl_change_state (GstElement * element, GstStateChange transition)
         if (!visual->actor || !visual->video)
           goto actor_setup_failed;
 
-        gst_gl_display_thread_add (visual->display,
-            (GstGLDisplayThreadFunc) actor_setup, visual);
+        gst_gl_context_thread_add (visual->context,
+            (GstGLContextThreadFunc) actor_setup, visual);
 
         if (visual->actor_setup_result != 0)
           goto actor_setup_failed;
@@ -1086,14 +1172,13 @@ gst_visual_gl_change_state (GstElement * element, GstStateChange transition)
     case GST_STATE_CHANGE_PAUSED_TO_READY:
     {
       if (visual->fbo) {
-        gst_gl_display_del_fbo (visual->display, visual->fbo,
+        gst_gl_context_del_fbo (visual->context, visual->fbo,
             visual->depthbuffer);
         visual->fbo = 0;
         visual->depthbuffer = 0;
       }
       if (visual->midtexture) {
-        gst_gl_display_del_texture (visual->display, visual->midtexture,
-            visual->width, visual->height);
+        gst_gl_context_del_texture (visual->context, &visual->midtexture);
         visual->midtexture = 0;
       }
       if (visual->display) {
@@ -1231,6 +1316,7 @@ plugin_init (GstPlugin * plugin)
       g_free (name);
 
       name = g_strdup_printf ("libvisual_gl_%s", ref->info->plugname);
+      GST_DEBUG ("plugin libvisual_gl_%s REGISTERED", ref->info->plugname);
       make_valid_name (name);
       if (!gst_element_register (plugin, name, GST_RANK_NONE, type)) {
         g_free (name);
@@ -1245,6 +1331,6 @@ plugin_init (GstPlugin * plugin)
 
 GST_PLUGIN_DEFINE (GST_VERSION_MAJOR,
     GST_VERSION_MINOR,
-    "libvisual-gl",
+    libvisual_gl,
     "libvisual-gl visualization plugins",
     plugin_init, VERSION, "LGPL", GST_PACKAGE_NAME, GST_PACKAGE_ORIGIN)
