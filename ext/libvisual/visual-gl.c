@@ -111,6 +111,7 @@ struct _GstVisualGL
   gint height;
   GstClockTime duration;
   guint outsize;
+  gboolean pool_active;
 
   /* samples per frame based on caps */
   guint spf;
@@ -270,10 +271,9 @@ gst_visual_gl_init (GstVisualGL * visual)
   visual->gl_depth_func = GL_LESS;
   visual->is_enabled_gl_blend = GL_FALSE;
   visual->gl_blend_src_alpha = GL_ONE;
-  visual->pool = gst_gl_buffer_pool_new (visual->context);
-  structure = gst_buffer_pool_get_config (visual->pool);
-  //gst_buffer_pool_config_set_params (structure, caps, 1024 * 768 * 3, 2, 0);
-  //gst_buffer_pool_set_config (visual->pool, structure); 
+  visual->pool_active = FALSE;
+
+
 }
 
 static void
@@ -403,13 +403,9 @@ gst_visual_gl_sink_setcaps (GstPad * pad, GstObject * parent, GstCaps * caps)
   GstVisualGL *visual = GST_VISUAL_GL (gst_pad_get_parent (pad));
   GstStructure *structure;
 
-
   structure = gst_caps_get_structure (caps, 0);
-
   gst_structure_get_int (structure, "channels", &visual->channels);
   gst_structure_get_int (structure, "rate", &visual->rate);
-
-
 
   switch (visual->rate) {
     case 8000:
@@ -456,8 +452,13 @@ gst_vis_gl_src_negotiate (GstVisualGL * visual)
   GstCaps *othercaps, *target;
   GstStructure *structure;
   GstCaps *caps;
+  GstStructure *config;
+  static GstAllocationParams params = { 0, 0, 0, 15, };
+  GstBufferPool *pool;
+  GstQuery *query;
+  guint size, min, max;
 
-  caps = gst_pad_get_allowed_caps (visual->srcpad);
+  caps = gst_pad_get_pad_template_caps (visual->srcpad);
 
   /* see what the peer can do */
   othercaps = gst_pad_peer_query_caps (visual->srcpad, NULL);
@@ -476,6 +477,9 @@ gst_vis_gl_src_negotiate (GstVisualGL * visual)
     gst_caps_unref (caps);
   }
 
+  target = gst_caps_make_writable (target);
+  target = gst_caps_fixate (target);
+
   /* fixate in case something is not fixed. This does nothing if the value is
    * already fixed. For video we always try to fixate to something like
    * 320x240x25 by convention. */
@@ -486,6 +490,46 @@ gst_vis_gl_src_negotiate (GstVisualGL * visual)
       DEFAULT_FPS_N, DEFAULT_FPS_D);
  
   gst_pad_set_caps (visual->srcpad, target);
+
+
+  /* try to get a bufferpool now */
+  /* find a pool for the negotiated caps now */
+  query = gst_query_new_allocation (target, TRUE);
+
+  if (!gst_pad_peer_query (visual->srcpad, query)) {
+    /* no problem, we use the query defaults */
+    GST_DEBUG_OBJECT (visual, "ALLOCATION query failed");
+  }
+
+  if (gst_query_get_n_allocation_pools (query) > 0) {
+    /* we got configuration from our peer, parse them */
+    gst_query_parse_nth_allocation_pool (query, 0, &pool, &size, &min, &max);
+  } else {
+    pool = NULL;
+    size = DEFAULT_WIDTH * DEFAULT_HEIGHT * 3;
+    min = max = 0;
+  }
+
+  if (pool == NULL) {
+    /* we did not get a pool, make one ourselves then */
+    pool = gst_gl_buffer_pool_new (visual->context);
+    if (!pool)
+      GST_DEBUG_OBJECT (visual, "POOL SHIT CREATE");
+  }
+
+  config = gst_buffer_pool_get_config (pool);
+  gst_buffer_pool_config_set_params (config, target, size, min, max);
+  gst_buffer_pool_config_set_allocator (config, NULL, &params);
+  if (!gst_buffer_pool_set_config (pool, config))
+    GST_DEBUG_OBJECT (visual, "POOL SHIT CONFIG");
+
+  if (visual->pool) {
+    gst_buffer_pool_set_active (visual->pool, FALSE);
+    gst_object_unref (visual->pool);
+  }
+  visual->pool = pool;
+
+
   gst_caps_unref (target);
 
   return TRUE;
@@ -541,6 +585,7 @@ gst_visual_gl_sink_event (GstPad * pad, GstObject * parent, GstEvent * event)
     case GST_EVENT_CAPS:
       GST_DEBUG_OBJECT (visual, "set sinkpad caps");
       gst_event_parse_caps (event, &caps);
+      res = gst_vis_gl_src_negotiate (visual);
       gst_visual_gl_sink_setcaps (visual->sinkpad, parent, caps);
       break;
     default:
@@ -679,16 +724,16 @@ gst_visual_gl_src_query (GstPad * pad, GstObject *parent, GstQuery * query)
       if (!src_caps)
         GST_DEBUG_OBJECT (visual, "failed to set src caps from CAPS QUERY");
           res = FALSE;
-      if (gst_caps_can_intersect (src_caps, caps))
-        src_caps = gst_caps_intersect (src_caps, caps);
-      if (visual->pool == NULL) {
-        visual->pool = gst_gl_buffer_pool_new (visual->context);
+      //if (gst_caps_can_intersect (src_caps, caps))
+      //  src_caps = gst_caps_intersect (src_caps, caps);
+      //if (visual->pool == NULL) {
+      //  visual->pool = gst_gl_buffer_pool_new (visual->context);
 
-        config = gst_buffer_pool_get_config (visual->pool);
+      //  config = gst_buffer_pool_get_config (visual->pool);
 
-        gst_buffer_pool_config_set_params (config, src_caps, 640*480*3, 2, 0);
-        gst_buffer_pool_set_config (visual->pool, config);
-      }
+      //  gst_buffer_pool_config_set_params (config, src_caps, 640*480*3, 2, 0);
+      //  gst_buffer_pool_set_config (visual->pool, config);
+      //}
       res = TRUE;
 
       //if (gst_pad_get_current_caps (visual->srcpad) == NULL) {
@@ -698,7 +743,7 @@ gst_visual_gl_src_query (GstPad * pad, GstObject *parent, GstQuery * query)
       //}
       //res = gst_pad_get_current_caps (visual->srcpad);
       //gst_pad_set_caps (visual->srcpad, gst_caps_copy(gst_pad_get_allowed_caps (visual->srcpad)) );
-      break;*/
+      break; */
     default:
       GST_DEBUG_OBJECT (visual, "QUERY DEFAULT");
       //res = gst_pad_peer_query (visual->sinkpad, query);
@@ -724,18 +769,28 @@ get_buffer (GstVisualGL * visual, GstBuffer ** outbuf)
     /*if (!gst_vis_gl_src_negotiate (visual))
       return GST_FLOW_NOT_NEGOTIATED;*/
 
+    target = gst_caps_copy (gst_pad_get_pad_template_caps (visual->srcpad));
     /*return GST_FLOW_NOT_NEGOTIATED;
     caps = gst_pad_get_allowed_caps (visual->srcpad);
-    target = gst_caps_copy (caps);
+    target = gst_caps_copy (caps);*/
     if (target == NULL) 
       GST_DEBUG_OBJECT (visual, "CAPS NULL");
     if (!gst_caps_is_fixed (target))
       GST_DEBUG_OBJECT (visual, "CAPS not FIXED");
-    gst_pad_set_caps (visual->srcpad, target);*/
+    gst_pad_set_caps (visual->srcpad, target);
   }
 
   GST_DEBUG_OBJECT (visual, "allocating output buffer with caps %"
       GST_PTR_FORMAT, gst_pad_get_current_caps (visual->srcpad));
+
+  if (!visual->pool_active) {
+    if (!gst_buffer_pool_set_active (visual->pool, TRUE)) {
+      GST_ELEMENT_ERROR (visual, RESOURCE, SETTINGS,
+          ("failed to activate bufferpool"), ("failed to activate bufferpool"));
+      return GST_FLOW_ERROR;
+    }
+    visual->pool_active = TRUE;
+  }
 
   gst_buffer_pool_acquire_buffer (visual->pool, outbuf, NULL);
   if (*outbuf == NULL) {
@@ -1125,6 +1180,7 @@ gst_visual_gl_change_state (GstElement * element, GstStateChange transition)
               gst_object_ref (GST_GL_DISPLAY (g_value_get_pointer (id_value)));
         }
         else {
+          GST_DEBUG_OBJECT (visual, "CREATE DISPLAY AND CONTEXT"); 
           /* this gl filter is a sink in terms of the gl chain */
           visual->display = gst_gl_display_new ();
           visual->context = gst_gl_context_new (visual->display);
