@@ -266,6 +266,8 @@ gst_visual_gl_init (GstVisualGL * visual)
   visual->fbo = 0;
   visual->depthbuffer = 0;
   visual->midtexture = 0;
+  visual->fps_n = DEFAULT_FPS_N;
+  visual->fps_d = DEFAULT_FPS_D;
 
   visual->is_enabled_gl_depth_test = GL_FALSE;
   visual->gl_depth_func = GL_LESS;
@@ -491,6 +493,28 @@ gst_vis_gl_src_negotiate (GstVisualGL * visual)
  
   gst_pad_set_caps (visual->srcpad, target);
 
+  gst_structure_get_int (structure, "width", &visual->width);
+  gst_structure_get_int (structure, "height", &visual->height);
+  gst_structure_get_fraction (structure, "framerate", &visual->fps_n,
+          &visual->fps_d);
+
+  /* precalc some values */
+
+  visual->fps_n = DEFAULT_FPS_N;
+  visual->fps_d = DEFAULT_FPS_D;
+  visual->width = DEFAULT_WIDTH;
+  visual->height = DEFAULT_HEIGHT;
+
+  visual->spf =
+      gst_util_uint64_scale_int (visual->rate, visual->fps_d, visual->fps_n);
+  visual->duration =
+      gst_util_uint64_scale_int (GST_SECOND, visual->fps_d, visual->fps_n);
+
+  gst_gl_context_gen_texture (visual->context, &visual->midtexture,
+      GST_VIDEO_FORMAT_RGBA, visual->width, visual->height);
+
+  gst_gl_context_gen_fbo (visual->context, visual->width, visual->height,
+      &visual->fbo, &visual->depthbuffer);
 
   /* try to get a bufferpool now */
   /* find a pool for the negotiated caps now */
@@ -585,8 +609,8 @@ gst_visual_gl_sink_event (GstPad * pad, GstObject * parent, GstEvent * event)
     case GST_EVENT_CAPS:
       GST_DEBUG_OBJECT (visual, "set sinkpad caps");
       gst_event_parse_caps (event, &caps);
-      res = gst_vis_gl_src_negotiate (visual);
       gst_visual_gl_sink_setcaps (visual->sinkpad, parent, caps);
+      res = gst_vis_gl_src_negotiate (visual);
       break;
     default:
       res = gst_pad_push_event (visual->srcpad, event);
@@ -708,42 +732,15 @@ gst_visual_gl_src_query (GstPad * pad, GstObject *parent, GstQuery * query)
         res = gst_pad_query_default (pad, parent, query);
       break;
     }
+    //case GST_QUERY_CONTEXT:
+    //{
+      //res = gst_gl_handle_context_query ((GstElement *) visual, query,
+        //  &visual->display);
+      //break;
+    //}
     /*case GST_QUERY_ALLOCATION:
       GST_DEBUG_OBJECT (visual, "QUERY ALLOCATION");
       break;*/
-    /*case GST_QUERY_CAPS:
-      GST_DEBUG_OBJECT (visual, "QUERY CAPS");
-      gst_query_parse_caps (query, &caps);
-      if (caps == NULL)
-        GST_DEBUG_OBJECT (visual, "failed to get non-null CAPS from CAPS QUERY");
-      if (!gst_video_info_from_caps (&vinfo, caps))
-        GST_DEBUG_OBJECT (visual, "failed to get video info from CAPS QUERY");
-
-      src_caps = gst_pad_get_pad_template_caps (visual->srcpad);
-      //gst_pad_query_caps (visual->srcpad, caps); // this is recursion idiot!
-      if (!src_caps)
-        GST_DEBUG_OBJECT (visual, "failed to set src caps from CAPS QUERY");
-          res = FALSE;
-      //if (gst_caps_can_intersect (src_caps, caps))
-      //  src_caps = gst_caps_intersect (src_caps, caps);
-      //if (visual->pool == NULL) {
-      //  visual->pool = gst_gl_buffer_pool_new (visual->context);
-
-      //  config = gst_buffer_pool_get_config (visual->pool);
-
-      //  gst_buffer_pool_config_set_params (config, src_caps, 640*480*3, 2, 0);
-      //  gst_buffer_pool_set_config (visual->pool, config);
-      //}
-      res = TRUE;
-
-      //if (gst_pad_get_current_caps (visual->srcpad) == NULL) {
-      //  caps = gst_pad_get_allowed_caps (visual->srcpad);
-      //  target = gst_caps_copy (caps);
-      //  gst_pad_set_caps (visual->srcpad, target);
-      //}
-      //res = gst_pad_get_current_caps (visual->srcpad);
-      //gst_pad_set_caps (visual->srcpad, gst_caps_copy(gst_pad_get_allowed_caps (visual->srcpad)) );
-      break; */
     default:
       GST_DEBUG_OBJECT (visual, "QUERY DEFAULT");
       //res = gst_pad_peer_query (visual->sinkpad, query);
@@ -766,18 +763,7 @@ get_buffer (GstVisualGL * visual, GstBuffer ** outbuf)
   GstCaps *target, *caps;
   /* we don't know an output format yet, pick one */
   if (gst_pad_get_current_caps (visual->srcpad) == NULL) {
-    /*if (!gst_vis_gl_src_negotiate (visual))
-      return GST_FLOW_NOT_NEGOTIATED;*/
-
-    target = gst_caps_copy (gst_pad_get_pad_template_caps (visual->srcpad));
-    /*return GST_FLOW_NOT_NEGOTIATED;
-    caps = gst_pad_get_allowed_caps (visual->srcpad);
-    target = gst_caps_copy (caps);*/
-    if (target == NULL) 
-      GST_DEBUG_OBJECT (visual, "CAPS NULL");
-    if (!gst_caps_is_fixed (target))
-      GST_DEBUG_OBJECT (visual, "CAPS not FIXED");
-    gst_pad_set_caps (visual->srcpad, target);
+      gst_vis_gl_src_negotiate (visual);
   }
 
   GST_DEBUG_OBJECT (visual, "allocating output buffer with caps %"
@@ -1095,10 +1081,13 @@ gst_visual_gl_chain (GstPad * pad, GstObject *parent, GstBuffer * buffer)
     if (outbuf == NULL) {
       ret = get_buffer (visual, &outbuf);
       if (ret != GST_FLOW_OK) {
+        GST_DEBUG_OBJECT (visual, "could not getbuffer for RENDER libvisual");
         goto beach;
       }
     }
 
+    GST_DEBUG_OBJECT (visual, "about to RENDER libvisual textid %d",
+      visual->midtexture);
     /* render libvisual plugin to our target */
     gst_gl_context_use_fbo_v2 (visual->context,
         visual->width, visual->height, visual->fbo, visual->depthbuffer,
@@ -1145,6 +1134,7 @@ gst_visual_gl_change_state (GstElement * element, GstStateChange transition)
 {
   GstVisualGL *visual = GST_VISUAL_GL (element);
   GstStateChangeReturn ret;
+  GError *error = NULL;
 
   switch (transition) {
     case GST_STATE_CHANGE_NULL_TO_READY:
@@ -1184,6 +1174,8 @@ gst_visual_gl_change_state (GstElement * element, GstStateChange transition)
           /* this gl filter is a sink in terms of the gl chain */
           visual->display = gst_gl_display_new ();
           visual->context = gst_gl_context_new (visual->display);
+          if (!gst_gl_context_create (visual->context, NULL, &error))
+            GST_DEBUG_OBJECT (visual, "CANNOT CREATE CONTEXT"); 
           //TODO visual->external_gl_context);
         }
 
