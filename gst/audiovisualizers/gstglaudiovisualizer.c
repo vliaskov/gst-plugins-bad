@@ -147,6 +147,7 @@ gst_gl_audio_visualizer_decide_allocation (GstAudioVisualizer * scope, GstQuery 
   GstGLAudioVisualizer *visual = GST_GL_AUDIO_VISUALIZER (scope);
   gst_query_parse_allocation (query, &outcaps, NULL);
 
+  GST_DEBUG_OBJECT (visual, "%s called", __func__);
   /* we got configuration from our peer or the decide_allocation method,
    * parse them */
   if (gst_query_get_n_allocation_params (query) > 0) {
@@ -172,8 +173,10 @@ gst_gl_audio_visualizer_decide_allocation (GstAudioVisualizer * scope, GstQuery 
     update_pool = FALSE;
   }
 
-  if (!gst_gl_ensure_display (visual, &visual->display))
+  if (!gst_gl_ensure_display (visual, &visual->display)) {
+    GST_DEBUG_OBJECT (visual, "%s failed to create GL display");
     return FALSE;
+  }
 
   if (gst_query_find_allocation_meta (query,
           GST_VIDEO_GL_TEXTURE_UPLOAD_META_API_TYPE, &idx)) {
@@ -182,12 +185,14 @@ gst_gl_audio_visualizer_decide_allocation (GstAudioVisualizer * scope, GstQuery 
     gpointer handle;
     gchar *type;
     gchar *apis;
+    GST_DEBUG_OBJECT (visual, "%s GST_VIDEO_GL_TEXTURE_UPLOAD_META_API_TYPE meta found");
 
     gst_query_parse_nth_allocation_meta (query, idx, &upload_meta_params);
     if (upload_meta_params) {
       if (gst_structure_get (upload_meta_params, "gst.gl.GstGLContext",
               GST_GL_TYPE_CONTEXT, &context, NULL) && context) {
         GstGLContext *old = visual->context;
+        GST_DEBUG_OBJECT (visual, "%s gst.gl.GstGLContext param found");
 
         visual->context = context;
         if (old)
@@ -198,6 +203,7 @@ gst_gl_audio_visualizer_decide_allocation (GstAudioVisualizer * scope, GstQuery 
           && handle) {
         GstGLPlatform platform = GST_GL_PLATFORM_NONE;
         GstGLAPI gl_apis;
+        GST_DEBUG_OBJECT (visual, "%s gst.gl.context.apis param found");
 
         GST_DEBUG ("got GL context handle 0x%p with type %s and apis %s",
             handle, type, apis);
@@ -214,6 +220,7 @@ gst_gl_audio_visualizer_decide_allocation (GstAudioVisualizer * scope, GstQuery 
   }
 
   if (!visual->context) {
+    GST_DEBUG_OBJECT (visual, "%s create CONTEXT");
     visual->context = gst_gl_context_new (visual->display);
     if (!gst_gl_context_create (visual->context, other_context, &error))
       goto context_error;
