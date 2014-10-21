@@ -19,7 +19,7 @@ libgstaudiovisualizers_la_LIBADD = \
 	$(GST_BASE_LIBS)  $(GST_LIBS) $(LIBM) \
 	$(top_builddir)/gst-libs/gst/gl/libgstgl-$(GST_API_VERSION).la
 libgstaudiovisualizers_la_LDFLAGS = $(GST_PLUGIN_LDFLAGS)
-libgstaudiovisualizers_la_LIBTOOLFLAGS = $(GST_PLUGIN_LIBTOOLFLAGS)
+libgstaudiovisualizers_la_LIBTOOLFLAGS = --tag=disable-static #$(GST_PLUGIN_LIBTOOLFLAGS)
 
 noinst_HEADERS = gstaudiovisualizer.h gstdrawhelpers.h \
 	gstspacescope.h gstspectrascope.h gstsynaescope.h gstwavescope.h \
