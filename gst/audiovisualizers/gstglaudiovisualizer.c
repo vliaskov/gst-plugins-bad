@@ -111,6 +111,144 @@ gst_gl_audio_visualizer_finalize (GObject * object)
 {
 }
 
+static void
+actor_setup (GstGLContext * context, GstGLAudioVisualizer * visual)
+{
+  /* save and clear top of the stack */
+  glPushAttrib (GL_ALL_ATTRIB_BITS);
+
+  glMatrixMode (GL_PROJECTION);
+  glPushMatrix ();
+  glLoadIdentity ();
+
+  glMatrixMode (GL_MODELVIEW);
+  glPushMatrix ();
+  glLoadIdentity ();
+
+  visual->actor_setup_result = visual_actor_realize (visual->actor);
+  if (visual->actor_setup_result == 0) {
+    /* store the actor's matrices for rendering the first frame */
+    glGetDoublev (GL_MODELVIEW_MATRIX, visual->actor_modelview_matrix);
+    glGetDoublev (GL_PROJECTION_MATRIX, visual->actor_projection_matrix);
+
+    visual->is_enabled_gl_depth_test = glIsEnabled (GL_DEPTH_TEST);
+    glGetIntegerv (GL_DEPTH_FUNC, &visual->gl_depth_func);
+
+    visual->is_enabled_gl_blend = glIsEnabled (GL_BLEND);
+    glGetIntegerv (GL_BLEND_SRC_ALPHA, &visual->gl_blend_src_alpha);
+
+    /* retore matrix */
+    glMatrixMode (GL_PROJECTION);
+    glPopMatrix ();
+
+    glMatrixMode (GL_MODELVIEW);
+    glPopMatrix ();
+
+    glPopAttrib ();
+  }
+  /*
+  gst_gl_context_use_fbo_v2 (visual->context,
+      visual->width, visual->height, visual->fbo, visual->depthbuffer,
+      visual->midtexture, (GLCB_V2) gst_gl_audio_visualizer_render_frame, (gpointer *) visual);
+  */
+}
+
+static void gst_gl_audio_visualizer_render_frame (gpointer stuff)
+{
+  GstGLAudioVisualizer *visual = GST_GL_AUDIO_VISUALIZER (stuff);
+  const guint16 *data;
+  VisBuffer *lbuf, *rbuf;
+  guint16 ldata[VISUAL_SAMPLES], rdata[VISUAL_SAMPLES];
+
+  data = amap.data;
+  lbuf = visual_buffer_new_with_buffer (ldata, sizeof (ldata), NULL);
+  rbuf = visual_buffer_new_with_buffer (rdata, sizeof (rdata), NULL);
+
+  if (visual->channels == 2) {
+    for (i = 0; i < VISUAL_SAMPLES; i++) {
+      ldata[i] = *data++;
+      rdata[i] = *data++;
+    }
+  } else {
+    for (i = 0; i < VISUAL_SAMPLES; i++) {
+      ldata[i] = *data;
+      rdata[i] = *data++;
+    }
+  }
+
+  visual_audio_samplepool_input_channel (visual->audio->samplepool,
+      lbuf, visual->libvisual_rate, VISUAL_AUDIO_SAMPLE_FORMAT_S16,
+      VISUAL_AUDIO_CHANNEL_LEFT);
+  visual_audio_samplepool_input_channel (visual->audio->samplepool,
+      rbuf, visual->libvisual_rate, VISUAL_AUDIO_SAMPLE_FORMAT_S16,
+      VISUAL_AUDIO_CHANNEL_RIGHT);
+
+  visual_object_unref (VISUAL_OBJECT (lbuf));
+  visual_object_unref (VISUAL_OBJECT (rbuf));
+
+  visual_audio_analyze (visual->audio);
+
+  /* apply the matrices that the actor set up */
+  glPushAttrib (GL_ALL_ATTRIB_BITS);
+
+  glMatrixMode (GL_PROJECTION);
+  glPushMatrix ();
+  glLoadMatrixd (visual->actor_projection_matrix);
+
+  glMatrixMode (GL_MODELVIEW);
+  glPushMatrix ();
+  glLoadMatrixd (visual->actor_modelview_matrix);
+
+  /* This line try to hacks compatiblity with libprojectM
+   * If libprojectM version <= 2.0.0 then we have to unbind our current
+   * fbo to see something. But it's incorrect and we cannot use fbo chainning (append other glfilters
+   * after libvisual_gl_projectM will not work)
+   * To have full compatibility, libprojectM needs to take care of our fbo.
+   * Indeed libprojectM has to unbind it before the first rendering pass
+   * and then rebind it before the final pass. It's done from 2.0.1
+   */
+  //name = gst_element_get_name (GST_ELEMENT (visual));
+  /*if (g_ascii_strncasecmp (name, "visualglprojectm", 16) == 0
+      && !HAVE_PROJECTM_TAKING_CARE_OF_EXTERNAL_FBO)
+    glBindFramebufferEXT (GL_FRAMEBUFFER_EXT, 0);*/
+  //g_free (name);
+
+  actor_negotiate (visual->context, visual);
+
+  if (visual->is_enabled_gl_depth_test) {
+    glEnable (GL_DEPTH_TEST);
+    glDepthFunc (visual->gl_depth_func);
+  }
+
+  if (visual->is_enabled_gl_blend) {
+    glEnable (GL_BLEND);
+    glBlendFunc (visual->gl_blend_src_alpha, GL_ZERO);
+  }
+
+  visual_actor_run (visual->actor, visual->audio);
+
+  check_gl_matrix ();
+
+  glMatrixMode (GL_PROJECTION);
+  glPopMatrix ();
+
+  glMatrixMode (GL_MODELVIEW);
+  glPopMatrix ();
+
+  glPopAttrib ();
+
+  glDisable (GL_DEPTH_TEST);
+  glDisable (GL_BLEND);
+
+  /*glDisable (GL_LIGHT0);
+     glDisable (GL_LIGHTING);
+     glDisable (GL_POLYGON_OFFSET_FILL);
+     glDisable (GL_COLOR_MATERIAL);
+     glDisable (GL_CULL_FACE); */
+
+  GST_DEBUG_OBJECT (visual, "rendered one frame");
+}
+
 static gboolean
 gst_gl_audio_visualizer_render (GstAudioVisualizer * base, GstBuffer * audio,
     GstVideoFrame * video)
@@ -119,12 +257,14 @@ gst_gl_audio_visualizer_render (GstAudioVisualizer * base, GstBuffer * audio,
   GstMapInfo amap;
   guint num_samples;
 
-  gst_buffer_map (audio, &amap, GST_MAP_READ);
+  gst_buffer_map (audio, &visual->amap, GST_MAP_READ);
 
   /*num_samples =
       amap.size / (GST_AUDIO_INFO_CHANNELS (&base->ainfo) * sizeof (gint16));
   scope->process (base, (guint32 *) GST_VIDEO_FRAME_PLANE_DATA (video, 0),
       (gint16 *) amap.data, num_samples);*/
+
+
   gst_buffer_unmap (audio, &amap);
   return TRUE;
 }

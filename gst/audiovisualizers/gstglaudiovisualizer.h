@@ -85,6 +85,7 @@ struct _GstGLAudioVisualizer
   /* GL stuff */
   GstGLDisplay *display;
   GstGLContext *context;
+  GstVideoGLTextureUploadMeta *meta;
   GLuint fbo;
   GLuint depthbuffer;
   GLuint out_tex_id;
@@ -94,6 +95,12 @@ struct _GstGLAudioVisualizer
   GLint gl_depth_func;
   GLboolean is_enabled_gl_blend;
   GLint gl_blend_src_alpha;
+
+  /* libvisual stuff */
+  VisAudio *audio;
+  VisVideo *video;
+  VisActor *actor;
+  int actor_setup_result;
 
 };
 
