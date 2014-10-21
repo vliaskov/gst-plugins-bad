@@ -10,11 +10,14 @@ libgstaudiovisualizers_la_SOURCES = plugin.c \
 
 libgstaudiovisualizers_la_CFLAGS = $(GST_PLUGINS_BAD_CFLAGS) \
 	$(GST_PLUGINS_BASE_CFLAGS) $(GST_BASE_CFLAGS) \
-	$(GST_CFLAGS)
+	$(GST_CFLAGS) \
+	-I$(top_srcdir)/gst-libs \
+	-I$(top_srcdir)/gst-libs/gst/gl
 libgstaudiovisualizers_la_LIBADD = \
 	$(GST_PLUGINS_BASE_LIBS) -lgstaudio-$(GST_API_VERSION) \
 	-lgstvideo-$(GST_API_VERSION) -lgstfft-$(GST_API_VERSION) \
-	$(GST_BASE_LIBS)  $(GST_LIBS) $(LIBM)
+	$(GST_BASE_LIBS)  $(GST_LIBS) $(LIBM) \
+	$(top_builddir)/gst-libs/gst/gl/libgstgl-$(GST_API_VERSION).la
 libgstaudiovisualizers_la_LDFLAGS = $(GST_PLUGIN_LDFLAGS)
 libgstaudiovisualizers_la_LIBTOOLFLAGS = $(GST_PLUGIN_LIBTOOLFLAGS)
 

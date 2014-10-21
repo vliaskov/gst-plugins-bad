@@ -27,14 +27,21 @@
 #include <gst/video/video.h>
 #include <gst/audio/audio.h>
 #include <gst/base/gstadapter.h>
+#include <gst/gl/gstglbufferpool.h>
+#include <gst/gl/gstgldisplay.h>
+#include <gst/gl/gl.h>
+#include <gst/gl/gstglutils.h>
+
+#include <libvisual/libvisual.h>
+#include "gstaudiovisualizer.h"
 
 G_BEGIN_DECLS
 #define GST_TYPE_GL_AUDIO_VISUALIZER            (gst_gl_audio_visualizer_get_type())
 #define GST_GL_AUDIO_VISUALIZER(obj)            (G_TYPE_CHECK_INSTANCE_CAST((obj),GST_TYPE_GL_AUDIO_VISUALIZER,GstGLAudioVisualizer))
 #define GST_GL_AUDIO_VISUALIZER_CLASS(klass)    (G_TYPE_CHECK_CLASS_CAST((klass),GST_TYPE_GL_AUDIO_VISUALIZER,GstGLAudioVisualizerClass))
 #define GST_GL_AUDIO_VISUALIZER_GET_CLASS(obj)  (G_TYPE_INSTANCE_GET_CLASS((obj),GST_TYPE_GL_AUDIO_VISUALIZER,GstGLAudioVisualizerClass))
-#define GST_IS_SYNAESTHESIA(obj)         (G_TYPE_CHECK_INSTANCE_TYPE((obj),GST_TYPE_GL_AUDIO_VISUALIZER))
-#define GST_IS_SYNAESTHESIA_CLASS(klass) (G_TYPE_CHECK_CLASS_TYPE((klass),GST_TYPE_GL_AUDIO_VISUALIZER))
+#define GST_GL_IS_SYNAESTHESIA(obj)         (G_TYPE_CHECK_INSTANCE_TYPE((obj),GST_TYPE_GL_AUDIO_VISUALIZER))
+#define GST_GL_IS_SYNAESTHESIA_CLASS(klass) (G_TYPE_CHECK_CLASS_TYPE((klass),GST_TYPE_GL_AUDIO_VISUALIZER))
 typedef struct _GstGLAudioVisualizer GstGLAudioVisualizer;
 typedef struct _GstGLAudioVisualizerClass GstGLAudioVisualizerClass;
 typedef struct _GstGLAudioVisualizerPrivate GstGLAudioVisualizerPrivate;
@@ -80,7 +87,7 @@ struct _GstGLAudioVisualizer
   GstGLContext *context;
   GLuint fbo;
   GLuint depthbuffer;
-  GLuint midtexture;
+  GLuint out_tex_id;
   GLdouble actor_projection_matrix[16];
   GLdouble actor_modelview_matrix[16];
   GLboolean is_enabled_gl_depth_test;
@@ -104,6 +111,7 @@ struct _GstGLAudioVisualizerClass
 };
 
 GType gst_gl_audio_visualizer_get_type (void);
+gboolean gst_gl_audio_visualizer_plugin_init (GstPlugin * plugin);
 
 G_END_DECLS
 #endif /* __GST_GL_AUDIO_VISUALIZER_H__ */
