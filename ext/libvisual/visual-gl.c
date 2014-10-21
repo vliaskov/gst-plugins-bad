@@ -243,6 +243,8 @@ static void
 gst_visual_gl_init (GstVisualGL * visual)
 {
   GstStructure *structure;
+  GstQuery *context_query;
+  GValue *id_value;
   /* create the sink and src pads */
   visual->sinkpad = gst_pad_new_from_static_template (&sink_template, "sink");
   //gst_pad_set_setcaps_function (visual->sinkpad, gst_visual_gl_sink_setcaps);
@@ -274,6 +276,41 @@ gst_visual_gl_init (GstVisualGL * visual)
   visual->is_enabled_gl_blend = GL_FALSE;
   visual->gl_blend_src_alpha = GL_ONE;
   visual->pool_active = FALSE;
+
+  /*if (!gst_gl_ensure_display (visual, &visual->display))
+    GST_DEBUG_OBJECT (visual, "DISPLAY in QUERY CONTEXT");
+
+
+  structure = gst_structure_new_empty ("gstglcontext");
+  context_query = gst_query_new_custom (GST_QUERY_CUSTOM, structure);
+
+  GST_DEBUG_OBJECT (visual, "Trying to query GstGLContext from downstream (peer query failed)");
+  if (!gst_pad_peer_query (visual->srcpad, context_query)) {
+    GST_DEBUG_OBJECT(visual,
+        ("Could not query GstGLContext from downstream (peer query failed)"));
+  }
+
+  id_value = gst_structure_get_value (structure, "gstglcontext");
+  if (G_VALUE_HOLDS_POINTER (id_value)) {
+    // at least one gl element is after in our gl chain
+    visual->context =
+        gst_object_ref (GST_GL_CONTEXT (g_value_get_pointer (id_value)));
+  } else {
+    GError *error = NULL;
+
+    GST_INFO ("Creating GstGLContext");
+    visual->context = gst_gl_context_new (visual->display);
+
+    if (!gst_gl_context_create (visual->context, NULL,
+     &error)) {
+      GST_ELEMENT_ERROR (visual, RESOURCE, NOT_FOUND,
+          ("%s", error->message), (NULL));
+      return FALSE;
+    }
+  }
+
+  gst_query_unref (context_query);*/
+
 
 
 }
@@ -357,29 +394,192 @@ beach:
   return ret;
 }
 
-static gboolean
+gboolean
+gst_visual_gl_decide_allocation (GstVisualGL * visual, GstQuery * query)
+{
+  GstBufferPool *pool = NULL;
+  GstStructure *config;
+  GstCaps *caps;
+  guint min, max, size;
+  gboolean update_pool;
+  GError *error = NULL;
+  guint idx;
+  guint out_width, out_height;
+  GstGLContext *other_context = NULL;
+
+  gst_query_parse_allocation (query, &caps, NULL);
+
+  if (gst_query_get_n_allocation_pools (query) > 0) {
+    gst_query_parse_nth_allocation_pool (query, 0, &pool, &size, &min, &max);
+
+    update_pool = TRUE;
+  } else {
+    GstVideoInfo vinfo;
+
+    gst_video_info_init (&vinfo);
+    gst_video_info_from_caps (&vinfo, caps);
+    size = vinfo.size;
+    min = max = 0;
+    update_pool = FALSE;
+  }
+
+  if (!gst_gl_ensure_display (visual, &visual->display)) 
+    GST_DEBUG_OBJECT (visual, "DISPLAY in QUERY CONTEXT");
+
+  if (gst_query_find_allocation_meta (query,
+          GST_VIDEO_GL_TEXTURE_UPLOAD_META_API_TYPE, &idx)) {
+    GstGLContext *context;
+    const GstStructure *upload_meta_params;
+    gpointer handle;
+    gchar *type;
+    gchar *apis;
+
+    gst_query_parse_nth_allocation_meta (query, idx, &upload_meta_params);
+    if (upload_meta_params) {
+      if (gst_structure_get (upload_meta_params, "gst.gl.GstGLContext",
+              GST_GL_TYPE_CONTEXT, &context, NULL) && context) {
+        GstGLContext *old = visual->context;
+
+        visual->context = context;
+        if (old)
+          gst_object_unref (old);
+      } else if (gst_structure_get (upload_meta_params, "gst.gl.context.handle",
+              G_TYPE_POINTER, &handle, "gst.gl.context.type", G_TYPE_STRING,
+              &type, "gst.gl.context.apis", G_TYPE_STRING, &apis, NULL)
+          && handle) {
+        GstGLPlatform platform = GST_GL_PLATFORM_NONE;
+        GstGLAPI gl_apis;
+
+        GST_DEBUG ("got GL context handle 0x%p with type %s and apis %s",
+            handle, type, apis);
+
+        platform = gst_gl_platform_from_string (type);
+        gl_apis = gst_gl_api_from_string (apis);
+
+        if (gl_apis && platform)
+          other_context =
+              gst_gl_context_new_wrapped (visual->display, (guintptr) handle,
+              platform, gl_apis);
+      }
+    }
+  }
+
+  if (!visual->context) {
+    visual->context = gst_gl_context_new (visual->display);
+    if (!gst_gl_context_create (visual->context, other_context, &error))
+      goto context_error;
+  }
+
+  /*if (!pool)
+    pool = gst_gl_buffer_pool_new (visual->context);
+
+  config = gst_buffer_pool_get_config (pool);
+  gst_buffer_pool_config_set_params (config, caps, size, min, max);
+
+  gst_buffer_pool_config_add_option (config, GST_BUFFER_POOL_OPTION_VIDEO_META);
+
+  gst_buffer_pool_set_config (pool, config);
+
+  if (update_pool)
+    gst_query_set_nth_allocation_pool (query, 0, pool, size, min, max);
+  else
+    gst_query_add_allocation_pool (query, pool, size, min, max);
+
+  gst_object_unref (pool);*/
+
+  return TRUE;
+
+context_error:
+  {
+    GST_ELEMENT_ERROR (visual, RESOURCE, NOT_FOUND, ("%s", error->message),
+        (NULL));
+    return FALSE;
+  }
+}
+
+
+gboolean
 gst_visual_gl_src_setcaps (GstPad * pad, GstObject *parent, GstCaps * caps)
 {
   GstVisualGL *visual = GST_VISUAL_GL (gst_pad_get_parent (pad));
   GstStructure *structure;
+  GstQuery *query;
+  GstCaps *othercaps, *target, *peercaps;
+  GstStructure *config;
+  static GstAllocationParams params = { 0, 0, 0, 15, };
+  GstBufferPool *pool;
+  guint size, min, max;
+  int result;
 
-  structure = gst_caps_get_structure (caps, 0);
-
+  othercaps = gst_pad_get_pad_template_caps (visual->srcpad);
+  peercaps = gst_pad_peer_query_caps (visual->srcpad, NULL);
   GST_DEBUG_OBJECT (visual, "src pad got caps %" GST_PTR_FORMAT, caps);
 
-  if (!gst_structure_get_int (structure, "width", &visual->width))
-    goto error;
-  if (!gst_structure_get_int (structure, "height", &visual->height))
-    goto error;
-  if (!gst_structure_get_fraction (structure, "framerate", &visual->fps_n,
-          &visual->fps_d))
-    goto error;
+  /* see what the peer can do */
+  if (peercaps) {
+    target = gst_caps_intersect (othercaps, peercaps);
+    gst_caps_unref (othercaps);
+    gst_caps_unref (peercaps);
+    if (gst_caps_is_empty (target)) {
+
+      GST_DEBUG_OBJECT (visual, "INCOMPATIBLE CAPS1 %" GST_PTR_FORMAT, othercaps);
+      GST_DEBUG_OBJECT (visual, "INCOMPATIBLE CAPS2 %" GST_PTR_FORMAT, peercaps);
+      goto no_format;
+    }
+    gst_caps_truncate (target);
+  } else {
+    /* need a copy, we'll be modifying it when fixating */
+    target = gst_caps_copy (othercaps);
+    gst_caps_unref (othercaps);
+  }
+
+  target = gst_caps_make_writable (target);
+  target = gst_caps_fixate (target);
+
+  /* fixate in case something is not fixed. This does nothing if the value is
+   * already fixed. For video we always try to fixate to something like
+   * 320x240x25 by convention. */
+  structure = gst_caps_get_structure (target, 0);
+  gst_structure_fixate_field_nearest_int (structure, "width", DEFAULT_WIDTH);
+  gst_structure_fixate_field_nearest_int (structure, "height", DEFAULT_HEIGHT);
+  gst_structure_fixate_field_nearest_fraction (structure, "framerate",
+      DEFAULT_FPS_N, DEFAULT_FPS_D);
+ 
+  gst_pad_set_caps (visual->srcpad, target);
+
+  gst_structure_get_int (structure, "width", &visual->width);
+  gst_structure_get_int (structure, "height", &visual->height);
+  gst_structure_get_fraction (structure, "framerate", &visual->fps_n,
+          &visual->fps_d);
 
   /* precalc some values */
+
+  visual->fps_n = DEFAULT_FPS_N;
+  visual->fps_d = DEFAULT_FPS_D;
+  visual->width = DEFAULT_WIDTH;
+  visual->height = DEFAULT_HEIGHT;
+
   visual->spf =
       gst_util_uint64_scale_int (visual->rate, visual->fps_d, visual->fps_n);
   visual->duration =
       gst_util_uint64_scale_int (GST_SECOND, visual->fps_d, visual->fps_n);
+
+
+
+  /* try to get a bufferpool now */
+  /* find a pool for the negotiated caps now */
+  query = gst_query_new_allocation (target, TRUE);
+
+  if (!gst_pad_peer_query (visual->srcpad, query)) {
+    /* no problem, we use the query defaults */
+    GST_DEBUG_OBJECT (visual, "ALLOCATION query failed");
+  }
+
+  GST_DEBUG_OBJECT (visual, "calling decide_allocation");
+  result = gst_visual_gl_decide_allocation (visual, query);
+
+  GST_DEBUG_OBJECT (visual, "ALLOCATION (%d) params: %" GST_PTR_FORMAT, result,
+      query);
 
   gst_gl_context_gen_texture (visual->context, &visual->midtexture,
       GST_VIDEO_FORMAT_RGBA, visual->width, visual->height);
@@ -387,16 +587,48 @@ gst_visual_gl_src_setcaps (GstPad * pad, GstObject *parent, GstCaps * caps)
   gst_gl_context_gen_fbo (visual->context, visual->width, visual->height,
       &visual->fbo, &visual->depthbuffer);
 
-  gst_object_unref (visual);
+  if (gst_query_get_n_allocation_pools (query) > 0) {
+    /* we got configuration from our peer, parse them */
+    gst_query_parse_nth_allocation_pool (query, 0, &pool, &size, &min, &max);
+  } else {
+    pool = NULL;
+    size = DEFAULT_WIDTH * DEFAULT_HEIGHT * 3;
+    min = max = 0;
+  }
+
+  if (pool == NULL) {
+    /* we did not get a pool, make one ourselves then */
+    pool = gst_gl_buffer_pool_new (visual->context);
+    if (!pool)
+      GST_DEBUG_OBJECT (visual, "POOL SHIT CREATE");
+  }
+
+  config = gst_buffer_pool_get_config (pool);
+  gst_buffer_pool_config_set_params (config, target, size, min, max);
+  gst_buffer_pool_config_set_allocator (config, NULL, &params);
+  if (!gst_buffer_pool_set_config (pool, config))
+    GST_DEBUG_OBJECT (visual, "POOL SHIT CONFIG");
+
+  if (visual->pool) {
+    gst_buffer_pool_set_active (visual->pool, FALSE);
+    gst_object_unref (visual->pool);
+  }
+  visual->pool = pool;
+
+
+  gst_caps_unref (target);
+
   return TRUE;
 
   /* ERRORS */
-error:
+no_format:
   {
-    GST_DEBUG_OBJECT (visual, "error parsing caps");
-    gst_object_unref (visual);
+    GST_ELEMENT_ERROR (visual, STREAM, FORMAT, (NULL),
+        ("could not negotiate output format"));
+    gst_caps_unref (target);
     return FALSE;
   }
+
 }
 
 static gboolean
@@ -459,6 +691,7 @@ gst_vis_gl_src_negotiate (GstVisualGL * visual)
   GstBufferPool *pool;
   GstQuery *query;
   guint size, min, max;
+  int result;
 
   caps = gst_pad_get_pad_template_caps (visual->srcpad);
 
@@ -524,6 +757,12 @@ gst_vis_gl_src_negotiate (GstVisualGL * visual)
     /* no problem, we use the query defaults */
     GST_DEBUG_OBJECT (visual, "ALLOCATION query failed");
   }
+
+  GST_DEBUG_OBJECT (visual, "calling decide_allocation");
+  result = gst_visual_gl_decide_allocation (visual, query);
+
+  GST_DEBUG_OBJECT (visual, "ALLOCATION (%d) params: %" GST_PTR_FORMAT, result,
+      query);
 
   if (gst_query_get_n_allocation_pools (query) > 0) {
     /* we got configuration from our peer, parse them */
@@ -676,10 +915,23 @@ gst_visual_gl_src_query (GstPad * pad, GstObject *parent, GstQuery * query)
   GstCaps *target, *caps, *src_caps;
   GstStructure *config;
   GstVideoInfo vinfo;
+  GError *error = NULL;
+  guint idx;
+  gpointer handle;
+  gchar *type;
+  gchar *apis;
+  const GstStructure *upload_meta_params;
 
   visual = GST_VISUAL_GL (gst_pad_get_parent (pad));
 
   switch (GST_QUERY_TYPE (query)) {
+    case GST_QUERY_CAPS:
+    {
+      GST_DEBUG_OBJECT (visual, "set srcpad caps");
+      gst_query_parse_caps (query, &caps);
+      res = gst_visual_gl_src_setcaps (visual->srcpad, visual, caps);
+      break;
+    }
     case GST_QUERY_LATENCY:
     {
       /* We need to send the query upstream and add the returned latency to our
@@ -728,19 +980,80 @@ gst_visual_gl_src_query (GstPad * pad, GstObject *parent, GstQuery * query)
       res = g_strcmp0 (name, gst_structure_get_name (structure)) == 0;
       g_free (name);
 
+
+      structure = gst_query_writable_structure (query);
+      if (gst_structure_has_name (structure, "gstglcontext")) {
+        GST_DEBUG_OBJECT (visual, "Setting GSTGLCONTEXT from peer CUSTOM QUERY");
+        gst_structure_set (structure, "gstglcontext", G_TYPE_POINTER,
+            visual->context, NULL);
+        res = TRUE;
+      }
+
+
       if (!res)
         res = gst_pad_query_default (pad, parent, query);
+
       break;
+
     }
-    //case GST_QUERY_CONTEXT:
-    //{
-      //res = gst_gl_handle_context_query ((GstElement *) visual, query,
-        //  &visual->display);
-      //break;
-    //}
-    /*case GST_QUERY_ALLOCATION:
+    /*case GST_QUERY_CONTEXT:
+    {
+      res = TRUE;
+      GST_DEBUG_OBJECT (visual, "QUERY CONTEXT");
+      if (!gst_gl_ensure_display (visual, &visual->display))
+       res = FALSE;
+      if (res == FALSE)
+        GST_DEBUG_OBJECT (visual, "Creating DISPLAY in QUERY CONTEXT FAILED");
+
+      res = gst_gl_handle_context_query ((GstElement *) visual, query,
+          &visual->display);
+      if (res == FALSE)
+        GST_DEBUG_OBJECT (visual, "QUERY CONTEXT FAILED");
+      else {
+        GST_DEBUG_OBJECT (visual, "QUERY CONTEXT SUCCEEDED");
+        //gst_query_parse_context (query, &visual->context);
+      }
+
+      break;
+    }*/
+    case GST_QUERY_ALLOCATION:
       GST_DEBUG_OBJECT (visual, "QUERY ALLOCATION");
-      break;*/
+
+  if (gst_query_find_allocation_meta (query,
+          GST_VIDEO_GL_TEXTURE_UPLOAD_META_API_TYPE, &idx)) {
+    GstGLContext *context;
+    const GstStructure *upload_meta_params;
+
+    gst_query_parse_nth_allocation_meta (query, idx, &upload_meta_params);
+    if (gst_structure_get (upload_meta_params, "gst.gl.GstGLContext",
+            GST_GL_TYPE_CONTEXT, &context, NULL) && context) {
+    GST_DEBUG_OBJECT (visual, "FOUND CONTEXT FROM META QUERY DOWNSTREAM");
+      gst_object_replace ((GstObject **) & visual->context,
+          (GstObject *) context);
+
+      } else if (gst_structure_get (upload_meta_params, "gst.gl.context.handle",
+              G_TYPE_POINTER, &handle, "gst.gl.context.type", G_TYPE_STRING,
+              &type, "gst.gl.context.apis", G_TYPE_STRING, &apis, NULL)
+          && handle) {
+        GstGLPlatform platform = GST_GL_PLATFORM_NONE;
+        GstGLAPI gl_apis;
+
+        GST_DEBUG_OBJECT (visual, "FOUND WRAPPED CONTEXT FROM META QUERY DOWNSTREAM");
+        GST_DEBUG ("got GL context handle 0x%p with type %s and apis %s",
+            handle, type, apis);
+
+        platform = gst_gl_platform_from_string (type);
+        gl_apis = gst_gl_api_from_string (apis);
+
+        if (gl_apis && platform)
+          visual->context =
+              gst_gl_context_new_wrapped (visual->display, (guintptr) handle,
+              platform, gl_apis);
+      }
+  }
+
+
+      break;
     default:
       GST_DEBUG_OBJECT (visual, "QUERY DEFAULT");
       //res = gst_pad_peer_query (visual->sinkpad, query);
@@ -763,7 +1076,7 @@ get_buffer (GstVisualGL * visual, GstBuffer ** outbuf)
   GstCaps *target, *caps;
   /* we don't know an output format yet, pick one */
   if (gst_pad_get_current_caps (visual->srcpad) == NULL) {
-      gst_vis_gl_src_negotiate (visual);
+      //gst_vis_gl_src_negotiate (visual);
   }
 
   GST_DEBUG_OBJECT (visual, "allocating output buffer with caps %"
@@ -1135,6 +1448,14 @@ gst_visual_gl_change_state (GstElement * element, GstStateChange transition)
   GstVisualGL *visual = GST_VISUAL_GL (element);
   GstStateChangeReturn ret;
   GError *error = NULL;
+  GstQuery *query;
+  GstStructure *structure;
+  const GstStructure *upload_meta_params;
+  GValue *id_value;
+  guint idx;
+  gpointer handle;
+  gchar *type;
+  gchar *apis;
 
   switch (transition) {
     case GST_STATE_CHANGE_NULL_TO_READY:
@@ -1170,14 +1491,92 @@ gst_visual_gl_change_state (GstElement * element, GstStateChange transition)
               gst_object_ref (GST_GL_DISPLAY (g_value_get_pointer (id_value)));
         }
         else {
-          GST_DEBUG_OBJECT (visual, "CREATE DISPLAY AND CONTEXT"); 
+          //GST_DEBUG_OBJECT (visual, "CREATE DISPLAY AND CONTEXT"); 
+          GST_DEBUG_OBJECT (visual, "DISPLAY %p AND CONTEXT %p", visual->display, visual->context); 
           /* this gl filter is a sink in terms of the gl chain */
+          //visual->display = gst_gl_display_new ();
+          //visual->context = gst_gl_context_new (visual->display);
+          //if (!gst_gl_context_create (visual->context, NULL, &error))
+            //GST_DEBUG_OBJECT (visual, "CANNOT CREATE CONTEXT"); 
+          //TODO visual->external_gl_context);
+        }
+
+  //if (!gst_gl_ensure_display (visual, &visual->display))
+   // GST_DEBUG_OBJECT (visual, "DISPLAY in QUERY CONTEXT");
+
+  /*query = gst_query_new_allocation ();
+
+  gst_query_add_allocation_meta (query, GST_VIDEO_META_API_TYPE, 0);
+
+  gl_apis = gst_gl_api_to_string (gst_gl_context_get_gl_api (filter->context));
+  platform =
+      gst_gl_platform_to_string (gst_gl_context_get_gl_platform
+      (filter->context));
+  handle = (gpointer) gst_gl_context_get_gl_context (filter->context);
+
+  gl_context =
+      gst_structure_new ("GstVideoGLTextureUploadMeta", "gst.gl.GstGLContext",
+      GST_GL_TYPE_CONTEXT, filter->context, "gst.gl.context.handle",
+      G_TYPE_POINTER, handle, "gst.gl.context.type", G_TYPE_STRING, platform,
+      "gst.gl.context.apis", G_TYPE_STRING, gl_apis, NULL);
+  gst_query_add_allocation_meta (query,
+      GST_VIDEO_GL_TEXTURE_UPLOAD_META_API_TYPE, gl_context);
+
+  g_free (gl_apis);
+  g_free (platform);
+  gst_structure_free (gl_context);
+
+  gst_allocation_params_init (&params);
+
+  allocator = gst_allocator_find (GST_GL_MEMORY_ALLOCATOR);
+  gst_query_add_allocation_param (query, allocator, &params);
+  gst_object_unref (allocator); */
+
+
+  /*if (!visual->context) {
+    GST_DEBUG_OBJECT (visual, "WILL CREATE OWN CONTEXT");
+    visual->context = gst_gl_context_new (visual->display);
+    if (!gst_gl_context_create (visual->context, NULL,
+&error))
+    GST_DEBUG_OBJECT (visual, "CANNOT CREATE CONTEXT");
+  }*/
+
+  /*in_width = GST_VIDEO_INFO_WIDTH (&filter->in_info);
+  in_height = GST_VIDEO_INFO_HEIGHT (&filter->in_info);
+  out_width = GST_VIDEO_INFO_WIDTH (&filter->out_info);
+  out_height = GST_VIDEO_INFO_HEIGHT (&filter->out_info);
+
+  //blocking call, generate a FBO
+  if (!gst_gl_context_gen_fbo (filter->context, out_width, out_height,
+          &filter->fbo, &filter->depthbuffer))
+    goto context_error;
+
+  gst_gl_context_gen_texture (filter->context, &filter->in_tex_id,
+      GST_VIDEO_FORMAT_RGBA, in_width, in_height);
+
+  gst_gl_context_gen_texture (filter->context, &filter->out_tex_id,
+      GST_VIDEO_FORMAT_RGBA, out_width, out_height);
+
+  if (filter_class->display_init_cb != NULL) {
+    gst_gl_context_thread_add (filter->context, gst_gl_filter_start_gl,
+filter);
+  }
+
+  if (filter_class->onInitFBO) {
+    if (!filter_class->onInitFBO (filter))
+      goto error;
+  }*/
+
+        /*if (!visual->context) {
+          GST_DEBUG_OBJECT (visual, "CREATE DISPLAY AND CONTEXT %p");
           visual->display = gst_gl_display_new ();
           visual->context = gst_gl_context_new (visual->display);
           if (!gst_gl_context_create (visual->context, NULL, &error))
             GST_DEBUG_OBJECT (visual, "CANNOT CREATE CONTEXT"); 
-          //TODO visual->external_gl_context);
         }
+        else
+          if (!gst_gl_context_create (visual->context, NULL, &error))
+            GST_DEBUG_OBJECT (visual, "CANNOT CREATE CONTEXT"); */
 
         gst_visual_gl_reset (visual);
 
