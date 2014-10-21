@@ -5,7 +5,8 @@ libgstaudiovisualizers_la_SOURCES = plugin.c \
     gstspacescope.c gstspacescope.h \
     gstspectrascope.c gstspectrascope.h \
     gstsynaescope.c gstsynaescope.h \
-    gstwavescope.c gstwavescope.h
+    gstwavescope.c gstwavescope.h \
+    gstglaudiovisualizer.c gstglaudiovisualizer.h
 
 libgstaudiovisualizers_la_CFLAGS = $(GST_PLUGINS_BAD_CFLAGS) \
 	$(GST_PLUGINS_BASE_CFLAGS) $(GST_BASE_CFLAGS) \
@@ -18,7 +19,8 @@ libgstaudiovisualizers_la_LDFLAGS = $(GST_PLUGIN_LDFLAGS)
 libgstaudiovisualizers_la_LIBTOOLFLAGS = $(GST_PLUGIN_LIBTOOLFLAGS)
 
 noinst_HEADERS = gstaudiovisualizer.h gstdrawhelpers.h \
-	gstspacescope.h gstspectrascope.h gstsynaescope.h gstwavescope.h
+	gstspacescope.h gstspectrascope.h gstsynaescope.h gstwavescope.h \
+  gstglaudiovisualizer.h
 
 Android.mk: Makefile.am $(BUILT_SOURCES)
 	androgenizer \
