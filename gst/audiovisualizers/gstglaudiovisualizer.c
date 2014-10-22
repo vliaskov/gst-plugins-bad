@@ -137,17 +137,18 @@ check_gl_matrix (void)
 static void
 actor_setup (GstGLContext * context, GstGLAudioVisualizer * visual)
 {
+  GstGLFuncs *gl = visual->context->gl_vtable;
   GST_DEBUG_OBJECT (visual, "%s called\n", __func__);
   /* save and clear top of the stack */
-  glPushAttrib (GL_ALL_ATTRIB_BITS);
+  gl->PushAttrib (GL_ALL_ATTRIB_BITS);
 
-  glMatrixMode (GL_PROJECTION);
-  glPushMatrix ();
-  glLoadIdentity ();
+  gl->MatrixMode (GL_PROJECTION);
+  gl->PushMatrix ();
+  gl->LoadIdentity ();
 
-  glMatrixMode (GL_MODELVIEW);
-  glPushMatrix ();
-  glLoadIdentity ();
+  gl->MatrixMode (GL_MODELVIEW);
+  gl->PushMatrix ();
+  gl->LoadIdentity ();
 
   visual->actor_setup_result = visual_actor_realize (visual->actor);
   if (visual->actor_setup_result == 0) {
@@ -156,19 +157,19 @@ actor_setup (GstGLContext * context, GstGLAudioVisualizer * visual)
     glGetDoublev (GL_PROJECTION_MATRIX, visual->actor_projection_matrix);
 
     visual->is_enabled_gl_depth_test = glIsEnabled (GL_DEPTH_TEST);
-    glGetIntegerv (GL_DEPTH_FUNC, &visual->gl_depth_func);
+    gl->GetIntegerv (GL_DEPTH_FUNC, &visual->gl_depth_func);
 
     visual->is_enabled_gl_blend = glIsEnabled (GL_BLEND);
-    glGetIntegerv (GL_BLEND_SRC_ALPHA, &visual->gl_blend_src_alpha);
+    gl->GetIntegerv (GL_BLEND_SRC_ALPHA, &visual->gl_blend_src_alpha);
 
     /* retore matrix */
-    glMatrixMode (GL_PROJECTION);
-    glPopMatrix ();
+    gl->MatrixMode (GL_PROJECTION);
+    gl->PopMatrix ();
 
-    glMatrixMode (GL_MODELVIEW);
-    glPopMatrix ();
+    gl->MatrixMode (GL_MODELVIEW);
+    gl->PopMatrix ();
 
-    glPopAttrib ();
+    gl->PopAttrib ();
   }
   /*
   gst_gl_context_use_fbo_v2 (visual->context,
@@ -292,6 +293,7 @@ gst_gl_audio_visualizer_render (GstAudioVisualizer * base, GstBuffer * audio,
     GstVideoFrame * video)
 {
   GstGLAudioVisualizer *visual = GST_GL_AUDIO_VISUALIZER (base);
+  GstGLFuncs *gl = visual->context->gl_vtable;
   guint num_samples;
 
   gst_buffer_map (audio, &visual->amap, GST_MAP_READ);
@@ -304,15 +306,15 @@ gst_gl_audio_visualizer_render (GstAudioVisualizer * base, GstBuffer * audio,
 
 
   /* apply the matrices that the actor set up */
-  glPushAttrib (GL_ALL_ATTRIB_BITS);
+  gl->PushAttrib (GL_ALL_ATTRIB_BITS);
 
-  glMatrixMode (GL_PROJECTION);
-  glPushMatrix ();
-  glLoadMatrixd (visual->actor_projection_matrix);
+  gl->MatrixMode (GL_PROJECTION);
+  gl->PushMatrix ();
+  gl->LoadMatrixf (visual->actor_projection_matrix);
 
-  glMatrixMode (GL_MODELVIEW);
-  glPushMatrix ();
-  glLoadMatrixd (visual->actor_modelview_matrix);
+  gl->MatrixMode (GL_MODELVIEW);
+  gl->PushMatrix ();
+  gl->LoadMatrixf (visual->actor_modelview_matrix);
 
   /* This line try to hacks compatiblity with libprojectM
    * If libprojectM version <= 2.0.0 then we have to unbind our current
@@ -332,28 +334,27 @@ gst_gl_audio_visualizer_render (GstAudioVisualizer * base, GstBuffer * audio,
 
   if (visual->is_enabled_gl_depth_test) {
     glEnable (GL_DEPTH_TEST);
-    glDepthFunc (visual->gl_depth_func);
+    gl->DepthFunc (visual->gl_depth_func);
   }
 
   if (visual->is_enabled_gl_blend) {
-    glEnable (GL_BLEND);
-    glBlendFunc (visual->gl_blend_src_alpha, GL_ZERO);
+    gl->Enable (GL_BLEND);
+    gl->BlendFunc (visual->gl_blend_src_alpha, GL_ZERO);
   }
 
   //visual_actor_run (visual->actor, visual->audio);
-
   check_gl_matrix ();
 
-  glMatrixMode (GL_PROJECTION);
-  glPopMatrix ();
+  gl->MatrixMode (GL_PROJECTION);
+  gl->PopMatrix ();
 
-  glMatrixMode (GL_MODELVIEW);
-  glPopMatrix ();
+  gl->MatrixMode (GL_MODELVIEW);
+  gl->PopMatrix ();
 
-  glPopAttrib ();
+  gl->PopAttrib ();
 
-  glDisable (GL_DEPTH_TEST);
-  glDisable (GL_BLEND);
+  gl->Disable (GL_DEPTH_TEST);
+  gl->Disable (GL_BLEND);
 
 
 
