@@ -153,14 +153,14 @@ actor_setup (GstGLContext * context, GstGLAudioVisualizer * visual)
   visual->actor_setup_result = visual_actor_realize (visual->actor);
   if (visual->actor_setup_result == 0) {
     /* store the actor's matrices for rendering the first frame */
-    glGetDoublev (GL_MODELVIEW_MATRIX, visual->actor_modelview_matrix);
-    glGetDoublev (GL_PROJECTION_MATRIX, visual->actor_projection_matrix);
+    gl->GetFloatv (GL_MODELVIEW_MATRIX, visual->actor_modelview_matrix);
+    gl->GetFloatv (GL_PROJECTION_MATRIX, visual->actor_projection_matrix);
 
-    visual->is_enabled_gl_depth_test = glIsEnabled (GL_DEPTH_TEST);
-    gl->GetIntegerv (GL_DEPTH_FUNC, &visual->gl_depth_func);
+    visual->is_enabled_gl_depth_test = gl->IsEnabled (GL_DEPTH_TEST);
+    gl->GetFloatv (GL_DEPTH_FUNC, &visual->gl_depth_func);
 
     visual->is_enabled_gl_blend = glIsEnabled (GL_BLEND);
-    gl->GetIntegerv (GL_BLEND_SRC_ALPHA, &visual->gl_blend_src_alpha);
+    gl->GetFloatv (GL_BLEND_SRC_ALPHA, &visual->gl_blend_src_alpha);
 
     /* retore matrix */
     gl->MatrixMode (GL_PROJECTION);
