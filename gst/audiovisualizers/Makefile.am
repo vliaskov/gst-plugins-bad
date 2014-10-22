@@ -16,7 +16,7 @@ libgstaudiovisualizers_la_CFLAGS = $(GST_PLUGINS_BAD_CFLAGS) \
 libgstaudiovisualizers_la_LIBADD = \
 	$(GST_PLUGINS_BASE_LIBS) -lgstaudio-$(GST_API_VERSION) \
 	-lgstvideo-$(GST_API_VERSION) -lgstfft-$(GST_API_VERSION) \
-	$(GST_BASE_LIBS)  $(GST_LIBS) $(LIBM) \
+	$(GST_BASE_LIBS)  $(GST_LIBS) $(LIBM) $(LIBVISUAL_LIBS) \
 	$(top_builddir)/gst-libs/gst/gl/libgstgl-$(GST_API_VERSION).la
 libgstaudiovisualizers_la_LDFLAGS = $(GST_PLUGIN_LDFLAGS)
 libgstaudiovisualizers_la_LIBTOOLFLAGS = --tag=disable-static #$(GST_PLUGIN_LIBTOOLFLAGS)

@@ -112,8 +112,32 @@ gst_gl_audio_visualizer_finalize (GObject * object)
 }
 
 static void
+check_gl_matrix (void)
+{
+  GLdouble projection_matrix[16];
+  GLdouble modelview_matrix[16];
+  gint i = 0;
+  gint j = 0;
+
+  glGetDoublev (GL_PROJECTION_MATRIX, projection_matrix);
+  glGetDoublev (GL_MODELVIEW_MATRIX, modelview_matrix);
+
+  for (j = 0; j < 4; ++j) {
+    for (i = 0; i < 4; ++i) {
+      if (projection_matrix[i + 4 * j] != projection_matrix[i + 4 * j])
+        g_warning ("invalid projection matrix at coordiante %dx%d: %f\n", i, j,
+            projection_matrix[i + 4 * j]);
+      if (modelview_matrix[i + 4 * j] != modelview_matrix[i + 4 * j])
+        g_warning ("invalid modelview_matrix matrix at coordiante %dx%d: %f\n",
+            i, j, modelview_matrix[i + 4 * j]);
+    }
+  }
+}
+
+static void
 actor_setup (GstGLContext * context, GstGLAudioVisualizer * visual)
 {
+  GST_DEBUG_OBJECT (visual, "%s called\n", __func__);
   /* save and clear top of the stack */
   glPushAttrib (GL_ALL_ATTRIB_BITS);
 
@@ -153,6 +177,28 @@ actor_setup (GstGLContext * context, GstGLAudioVisualizer * visual)
   */
 }
 
+static void
+actor_negotiate (GstGLContext * context, GstGLAudioVisualizer * visual)
+{
+  gint err = VISUAL_OK;
+  GstAudioVisualizer *scope = GST_AUDIO_VISUALIZER (visual);
+
+  err = visual_video_set_depth (visual->video, VISUAL_VIDEO_DEPTH_GL);
+  if (err != VISUAL_OK)
+    g_warning ("failed to visual_video_set_depth\n");
+
+  err =
+      visual_video_set_dimension (visual->video, GST_VIDEO_INFO_WIDTH
+          (&scope->vinfo), GST_VIDEO_INFO_HEIGHT (&scope->vinfo) );
+  if (err != VISUAL_OK)
+    g_warning ("failed to visual_video_set_dimension\n");
+
+  err = visual_actor_video_negotiate (visual->actor, 0, FALSE, FALSE);
+  if (err != VISUAL_OK)
+    g_warning ("failed to visual_actor_video_negotiate\n");
+}
+
+/*
 static void gst_gl_audio_visualizer_render_frame (gpointer stuff)
 {
   GstGLAudioVisualizer *visual = GST_GL_AUDIO_VISUALIZER (stuff);
@@ -160,7 +206,7 @@ static void gst_gl_audio_visualizer_render_frame (gpointer stuff)
   VisBuffer *lbuf, *rbuf;
   guint16 ldata[VISUAL_SAMPLES], rdata[VISUAL_SAMPLES];
 
-  data = amap.data;
+  data = visual->amap.data;
   lbuf = visual_buffer_new_with_buffer (ldata, sizeof (ldata), NULL);
   rbuf = visual_buffer_new_with_buffer (rdata, sizeof (rdata), NULL);
 
@@ -188,7 +234,7 @@ static void gst_gl_audio_visualizer_render_frame (gpointer stuff)
 
   visual_audio_analyze (visual->audio);
 
-  /* apply the matrices that the actor set up */
+  // apply the matrices that the actor set up 
   glPushAttrib (GL_ALL_ATTRIB_BITS);
 
   glMatrixMode (GL_PROJECTION);
@@ -199,18 +245,10 @@ static void gst_gl_audio_visualizer_render_frame (gpointer stuff)
   glPushMatrix ();
   glLoadMatrixd (visual->actor_modelview_matrix);
 
-  /* This line try to hacks compatiblity with libprojectM
-   * If libprojectM version <= 2.0.0 then we have to unbind our current
-   * fbo to see something. But it's incorrect and we cannot use fbo chainning (append other glfilters
-   * after libvisual_gl_projectM will not work)
-   * To have full compatibility, libprojectM needs to take care of our fbo.
-   * Indeed libprojectM has to unbind it before the first rendering pass
-   * and then rebind it before the final pass. It's done from 2.0.1
-   */
   //name = gst_element_get_name (GST_ELEMENT (visual));
-  /*if (g_ascii_strncasecmp (name, "visualglprojectm", 16) == 0
-      && !HAVE_PROJECTM_TAKING_CARE_OF_EXTERNAL_FBO)
-    glBindFramebufferEXT (GL_FRAMEBUFFER_EXT, 0);*/
+  //if (g_ascii_strncasecmp (name, "visualglprojectm", 16) == 0
+    //  && !HAVE_PROJECTM_TAKING_CARE_OF_EXTERNAL_FBO)
+    //glBindFramebufferEXT (GL_FRAMEBUFFER_EXT, 0);
   //g_free (name);
 
   actor_negotiate (visual->context, visual);
@@ -240,21 +278,20 @@ static void gst_gl_audio_visualizer_render_frame (gpointer stuff)
   glDisable (GL_DEPTH_TEST);
   glDisable (GL_BLEND);
 
-  /*glDisable (GL_LIGHT0);
-     glDisable (GL_LIGHTING);
-     glDisable (GL_POLYGON_OFFSET_FILL);
-     glDisable (GL_COLOR_MATERIAL);
-     glDisable (GL_CULL_FACE); */
+  //glDisable (GL_LIGHT0);
+    // glDisable (GL_LIGHTING);
+    // glDisable (GL_POLYGON_OFFSET_FILL);
+   //  glDisable (GL_COLOR_MATERIAL);
+    // glDisable (GL_CULL_FACE); 
 
   GST_DEBUG_OBJECT (visual, "rendered one frame");
-}
+}*/
 
 static gboolean
 gst_gl_audio_visualizer_render (GstAudioVisualizer * base, GstBuffer * audio,
     GstVideoFrame * video)
 {
-  GstGLAudioVisualizer *scope = GST_GL_AUDIO_VISUALIZER (base);
-  GstMapInfo amap;
+  GstGLAudioVisualizer *visual = GST_GL_AUDIO_VISUALIZER (base);
   guint num_samples;
 
   gst_buffer_map (audio, &visual->amap, GST_MAP_READ);
@@ -265,7 +302,62 @@ gst_gl_audio_visualizer_render (GstAudioVisualizer * base, GstBuffer * audio,
       (gint16 *) amap.data, num_samples);*/
 
 
-  gst_buffer_unmap (audio, &amap);
+
+  /* apply the matrices that the actor set up */
+  glPushAttrib (GL_ALL_ATTRIB_BITS);
+
+  glMatrixMode (GL_PROJECTION);
+  glPushMatrix ();
+  glLoadMatrixd (visual->actor_projection_matrix);
+
+  glMatrixMode (GL_MODELVIEW);
+  glPushMatrix ();
+  glLoadMatrixd (visual->actor_modelview_matrix);
+
+  /* This line try to hacks compatiblity with libprojectM
+   * If libprojectM version <= 2.0.0 then we have to unbind our current
+   * fbo to see something. But it's incorrect and we cannot use fbo chainning (append other glfilters
+   * after libvisual_gl_projectM will not work)
+   * To have full compatibility, libprojectM needs to take care of our fbo.
+   * Indeed libprojectM has to unbind it before the first rendering pass
+   * and then rebind it before the final pass. It's done from 2.0.1
+   */
+  //name = gst_element_get_name (GST_ELEMENT (visual));
+  /*if (g_ascii_strncasecmp (name, "visualglprojectm", 16) == 0
+      && !HAVE_PROJECTM_TAKING_CARE_OF_EXTERNAL_FBO)
+    glBindFramebufferEXT (GL_FRAMEBUFFER_EXT, 0);*/
+  //g_free (name);
+
+  //actor_negotiate (visual->context, visual);
+
+  if (visual->is_enabled_gl_depth_test) {
+    glEnable (GL_DEPTH_TEST);
+    glDepthFunc (visual->gl_depth_func);
+  }
+
+  if (visual->is_enabled_gl_blend) {
+    glEnable (GL_BLEND);
+    glBlendFunc (visual->gl_blend_src_alpha, GL_ZERO);
+  }
+
+  //visual_actor_run (visual->actor, visual->audio);
+
+  check_gl_matrix ();
+
+  glMatrixMode (GL_PROJECTION);
+  glPopMatrix ();
+
+  glMatrixMode (GL_MODELVIEW);
+  glPopMatrix ();
+
+  glPopAttrib ();
+
+  glDisable (GL_DEPTH_TEST);
+  glDisable (GL_BLEND);
+
+
+
+  gst_buffer_unmap (audio, &visual->amap);
   return TRUE;
 }
 
@@ -365,6 +457,15 @@ gst_gl_audio_visualizer_decide_allocation (GstAudioVisualizer * scope, GstQuery 
     if (!gst_gl_context_create (visual->context, other_context, &error))
       goto context_error;
   }
+
+        /*visual->actor =
+            visual_actor_new (GST_VISUAL_GL_GET_CLASS (visual)->plugin->info->
+            plugname);
+        visual->video = visual_video_new ();
+        visual->audio = visual_audio_new ();
+
+        if (!visual->actor || !visual->video)
+          goto context_error;*/
 
   out_width = GST_VIDEO_INFO_WIDTH (&scope->vinfo);
   out_height = GST_VIDEO_INFO_HEIGHT (&scope->vinfo);

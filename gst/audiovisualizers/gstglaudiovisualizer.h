@@ -95,7 +95,7 @@ struct _GstGLAudioVisualizer
   GLint gl_depth_func;
   GLboolean is_enabled_gl_blend;
   GLint gl_blend_src_alpha;
-
+  GstMapInfo amap;
   /* libvisual stuff */
   VisAudio *audio;
   VisVideo *video;
