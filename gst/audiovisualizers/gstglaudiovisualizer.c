@@ -66,6 +66,7 @@ gst_gl_audio_visualizer_decide_allocation (GstAudioVisualizer * scope,
 GstQuery * query);
 static void
 gst_gl_audio_visualizer_finalize (GObject * object);
+static void gst_gl_audio_visualizer_render_frame (gpointer stuff);
 
 
 G_DEFINE_TYPE (GstGLAudioVisualizer, gst_gl_audio_visualizer, GST_TYPE_AUDIO_VISUALIZER);
@@ -138,6 +139,7 @@ static void
 actor_setup (GstGLContext * context, GstGLAudioVisualizer * visual)
 {
   GstGLFuncs *gl = visual->context->gl_vtable;
+  GstAudioVisualizer *scope = GST_AUDIO_VISUALIZER (visual);
   GST_DEBUG_OBJECT (visual, "%s called\n", __func__);
   /* save and clear top of the stack */
   gl->PushAttrib (GL_ALL_ATTRIB_BITS);
@@ -150,9 +152,8 @@ actor_setup (GstGLContext * context, GstGLAudioVisualizer * visual)
   gl->PushMatrix ();
   gl->LoadIdentity ();
 
-  visual->actor_setup_result = visual_actor_realize (visual->actor);
+  /*visual->actor_setup_result = visual_actor_realize (visual->actor);
   if (visual->actor_setup_result == 0) {
-    /* store the actor's matrices for rendering the first frame */
     gl->GetFloatv (GL_MODELVIEW_MATRIX, visual->actor_modelview_matrix);
     gl->GetFloatv (GL_PROJECTION_MATRIX, visual->actor_projection_matrix);
 
@@ -162,7 +163,6 @@ actor_setup (GstGLContext * context, GstGLAudioVisualizer * visual)
     visual->is_enabled_gl_blend = glIsEnabled (GL_BLEND);
     gl->GetFloatv (GL_BLEND_SRC_ALPHA, &visual->gl_blend_src_alpha);
 
-    /* retore matrix */
     gl->MatrixMode (GL_PROJECTION);
     gl->PopMatrix ();
 
@@ -170,12 +170,24 @@ actor_setup (GstGLContext * context, GstGLAudioVisualizer * visual)
     gl->PopMatrix ();
 
     gl->PopAttrib ();
-  }
-  /*
+  }*/
+  
+  /* gst_gl_context_use_fbo (visual->context,
+      GST_VIDEO_INFO_WIDTH (&scope->vinfo), GST_VIDEO_INFO_HEIGHT
+      (&scope->vinfo), visual->fbo, visual->depthbuffer,
+      visual->out_tex_id, (GLCB_V2) gst_gl_audio_visualizer_render_frame, 
+      GST_VIDEO_INFO_WIDTH (&scope->vinfo), GST_VIDEO_INFO_HEIGHT
+      (&scope->vinfo), visual->out_tex_id, 0,
+      GST_VIDEO_INFO_WIDTH (&scope->vinfo), 0, GST_VIDEO_INFO_HEIGHT
+      (&scope->vinfo),  GST_GL_DISPLAY_PROJECTION_ORTHO2D,
+      (gpointer *) visual); */
+  
   gst_gl_context_use_fbo_v2 (visual->context,
-      visual->width, visual->height, visual->fbo, visual->depthbuffer,
-      visual->midtexture, (GLCB_V2) gst_gl_audio_visualizer_render_frame, (gpointer *) visual);
-  */
+      GST_VIDEO_INFO_WIDTH (&scope->vinfo), GST_VIDEO_INFO_HEIGHT
+      (&scope->vinfo), visual->fbo, visual->depthbuffer,
+      visual->out_tex_id, (GLCB_V2) gst_gl_audio_visualizer_render_frame, 
+      (gpointer *) visual);
+  
 }
 
 static void
@@ -199,12 +211,13 @@ actor_negotiate (GstGLContext * context, GstGLAudioVisualizer * visual)
     g_warning ("failed to visual_actor_video_negotiate\n");
 }
 
-/*
+
 static void gst_gl_audio_visualizer_render_frame (gpointer stuff)
 {
   GstGLAudioVisualizer *visual = GST_GL_AUDIO_VISUALIZER (stuff);
   const guint16 *data;
-  VisBuffer *lbuf, *rbuf;
+  GstGLFuncs *gl = visual->context->gl_vtable;
+  /* VisBuffer *lbuf, *rbuf;
   guint16 ldata[VISUAL_SAMPLES], rdata[VISUAL_SAMPLES];
 
   data = visual->amap.data;
@@ -233,77 +246,10 @@ static void gst_gl_audio_visualizer_render_frame (gpointer stuff)
   visual_object_unref (VISUAL_OBJECT (lbuf));
   visual_object_unref (VISUAL_OBJECT (rbuf));
 
-  visual_audio_analyze (visual->audio);
+  visual_audio_analyze (visual->audio); */
 
   // apply the matrices that the actor set up 
-  glPushAttrib (GL_ALL_ATTRIB_BITS);
-
-  glMatrixMode (GL_PROJECTION);
-  glPushMatrix ();
-  glLoadMatrixd (visual->actor_projection_matrix);
-
-  glMatrixMode (GL_MODELVIEW);
-  glPushMatrix ();
-  glLoadMatrixd (visual->actor_modelview_matrix);
-
-  //name = gst_element_get_name (GST_ELEMENT (visual));
-  //if (g_ascii_strncasecmp (name, "visualglprojectm", 16) == 0
-    //  && !HAVE_PROJECTM_TAKING_CARE_OF_EXTERNAL_FBO)
-    //glBindFramebufferEXT (GL_FRAMEBUFFER_EXT, 0);
-  //g_free (name);
-
-  actor_negotiate (visual->context, visual);
-
-  if (visual->is_enabled_gl_depth_test) {
-    glEnable (GL_DEPTH_TEST);
-    glDepthFunc (visual->gl_depth_func);
-  }
-
-  if (visual->is_enabled_gl_blend) {
-    glEnable (GL_BLEND);
-    glBlendFunc (visual->gl_blend_src_alpha, GL_ZERO);
-  }
-
-  visual_actor_run (visual->actor, visual->audio);
-
-  check_gl_matrix ();
-
-  glMatrixMode (GL_PROJECTION);
-  glPopMatrix ();
-
-  glMatrixMode (GL_MODELVIEW);
-  glPopMatrix ();
-
-  glPopAttrib ();
-
-  glDisable (GL_DEPTH_TEST);
-  glDisable (GL_BLEND);
-
-  //glDisable (GL_LIGHT0);
-    // glDisable (GL_LIGHTING);
-    // glDisable (GL_POLYGON_OFFSET_FILL);
-   //  glDisable (GL_COLOR_MATERIAL);
-    // glDisable (GL_CULL_FACE); 
-
-  GST_DEBUG_OBJECT (visual, "rendered one frame");
-}*/
-
-static gboolean
-gst_gl_audio_visualizer_render (GstAudioVisualizer * base, GstBuffer * audio,
-    GstVideoFrame * video)
-{
-  GstGLAudioVisualizer *visual = GST_GL_AUDIO_VISUALIZER (base);
-  GstGLFuncs *gl = visual->context->gl_vtable;
-  guint num_samples;
-
-  gst_buffer_map (audio, &visual->amap, GST_MAP_READ);
-
-  /*num_samples =
-      amap.size / (GST_AUDIO_INFO_CHANNELS (&base->ainfo) * sizeof (gint16));
-  scope->process (base, (guint32 *) GST_VIDEO_FRAME_PLANE_DATA (video, 0),
-      (gint16 *) amap.data, num_samples);*/
-
-
+  GST_DEBUG_OBJECT (visual, "rendered one frame fbo");
 
   /* apply the matrices that the actor set up */
   gl->PushAttrib (GL_ALL_ATTRIB_BITS);
@@ -344,6 +290,139 @@ gst_gl_audio_visualizer_render (GstAudioVisualizer * base, GstBuffer * audio,
 
   //visual_actor_run (visual->actor, visual->audio);
   check_gl_matrix ();
+    GLfloat verts[] = { -1.0f, -1.0f,
+      1.0f, -1.0f,
+      1.0f, 1.0f,
+      -1.0f, 1.0f
+    };
+    GLfloat texcoords[] = { 0.0f, 0.0f,
+      1.0f, 0.0f,
+      1.0f, 1.0f,
+      0.0f, 1.0f
+    };
+    GLfloat colors[] = { 0.0f, 0.0f, 1.0f, 1.0f,
+      1.0f, 0.0f, 0.0f, 1.0f,
+      0.0f, 1.0f, 0.0f, 1.0f,
+      1.0f, 1.0f, 0.0f, 1.0f
+    };
+
+    gl->ActiveTexture (GL_TEXTURE0);
+
+    gl->Enable (GL_TEXTURE_2D);
+    gl->BindTexture (GL_TEXTURE_2D, visual->out_tex_id);
+
+    gl->ClientActiveTexture (GL_TEXTURE0);
+
+    gl->EnableClientState (GL_VERTEX_ARRAY);
+    gl->EnableClientState (GL_TEXTURE_COORD_ARRAY);
+
+    gl->VertexPointer (2, GL_FLOAT, 0, &verts);
+    gl->TexCoordPointer (2, GL_FLOAT, 0, &texcoords);
+    gl->ColorPointer (4, GL_FLOAT, 0, &colors);
+
+    gl->DrawArrays (GL_TRIANGLE_FAN, 0, 4);
+
+    gl->DisableClientState (GL_VERTEX_ARRAY);
+    gl->DisableClientState (GL_TEXTURE_COORD_ARRAY);
+
+  gl->MatrixMode (GL_PROJECTION);
+  gl->PopMatrix ();
+
+  gl->MatrixMode (GL_MODELVIEW);
+  gl->PopMatrix ();
+
+  gl->PopAttrib ();
+
+  gl->Disable (GL_DEPTH_TEST);
+  gl->Disable (GL_BLEND);
+
+
+  //gst_buffer_unmap (audio, &visual->amap);
+
+}
+
+static gboolean
+gst_gl_audio_visualizer_render (GstAudioVisualizer * base, GstBuffer * audio,
+    GstVideoFrame * video)
+{
+  GstGLAudioVisualizer *visual = GST_GL_AUDIO_VISUALIZER (base);
+  GstGLFuncs *gl = visual->context->gl_vtable;
+  guint num_samples;
+  /*
+  gst_buffer_map (audio, &visual->amap, GST_MAP_READ);
+
+  //num_samples =
+    //  amap.size / (GST_AUDIO_INFO_CHANNELS (&base->ainfo) * sizeof (gint16));
+  //scope->process (base, (guint32 *) GST_VIDEO_FRAME_PLANE_DATA (video, 0),
+    //  (gint16 *) amap.data, num_samples);
+
+
+
+
+  gl->PushAttrib (GL_ALL_ATTRIB_BITS);
+
+  gl->MatrixMode (GL_PROJECTION);
+  gl->PushMatrix ();
+  gl->LoadMatrixf (visual->actor_projection_matrix);
+
+  gl->MatrixMode (GL_MODELVIEW);
+  gl->PushMatrix ();
+  gl->LoadMatrixf (visual->actor_modelview_matrix);
+
+  //name = gst_element_get_name (GST_ELEMENT (visual));
+  //if (g_ascii_strncasecmp (name, "visualglprojectm", 16) == 0
+    //  && !HAVE_PROJECTM_TAKING_CARE_OF_EXTERNAL_FBO)
+    //glBindFramebufferEXT (GL_FRAMEBUFFER_EXT, 0);
+  //g_free (name);
+
+  //actor_negotiate (visual->context, visual);
+
+  if (visual->is_enabled_gl_depth_test) {
+    glEnable (GL_DEPTH_TEST);
+    gl->DepthFunc (visual->gl_depth_func);
+  }
+
+  if (visual->is_enabled_gl_blend) {
+    gl->Enable (GL_BLEND);
+    gl->BlendFunc (visual->gl_blend_src_alpha, GL_ZERO);
+  }
+
+  //visual_actor_run (visual->actor, visual->audio);
+  check_gl_matrix ();
+    GLfloat verts[] = { -1.0f, -1.0f,
+      1.0f, -1.0f,
+      1.0f, 1.0f,
+      -1.0f, 1.0f
+    };
+    GLfloat texcoords[] = { 0.0f, 0.0f,
+      1.0f, 0.0f,
+      1.0f, 1.0f,
+      0.0f, 1.0f
+    };
+    GLfloat colors[] = { 0.0f, 0.0f, 1.0f, 1.0f,
+      1.0f, 0.0f, 0.0f, 1.0f,
+      0.0f, 1.0f, 0.0f, 1.0f,
+      1.0f, 1.0f, 0.0f, 1.0f
+    };
+
+    gl->ActiveTexture (GL_TEXTURE0);
+
+    gl->Enable (GL_TEXTURE_2D);
+    gl->BindTexture (GL_TEXTURE_2D, visual->out_tex_id);
+
+    gl->ClientActiveTexture (GL_TEXTURE0);
+
+    gl->EnableClientState (GL_VERTEX_ARRAY);
+    gl->EnableClientState (GL_TEXTURE_COORD_ARRAY);
+
+    gl->VertexPointer (2, GL_FLOAT, 0, &verts);
+    gl->TexCoordPointer (2, GL_FLOAT, 0, &texcoords);
+    gl->ColorPointer (4, GL_FLOAT, 0, &colors);
+
+    gl->DrawArrays (GL_TRIANGLE_FAN, 0, 4);
+
+    gl->DisableClientState (GL_VERTEX_ARRAY);
+    gl->DisableClientState (GL_TEXTURE_COORD_ARRAY);
 
   gl->MatrixMode (GL_PROJECTION);
   gl->PopMatrix ();
@@ -358,9 +437,9 @@ gst_gl_audio_visualizer_render (GstAudioVisualizer * base, GstBuffer * audio,
 
 
 
-  gst_buffer_unmap (audio, &visual->amap);
+  gst_buffer_unmap (audio, &visual->amap); */
   return TRUE;
-}
+} 
 
 static gboolean
 gst_gl_audio_visualizer_decide_allocation (GstAudioVisualizer * scope, GstQuery * query)
@@ -459,14 +538,7 @@ gst_gl_audio_visualizer_decide_allocation (GstAudioVisualizer * scope, GstQuery 
       goto context_error;
   }
 
-        /*visual->actor =
-            visual_actor_new (GST_VISUAL_GL_GET_CLASS (visual)->plugin->info->
-            plugname);
-        visual->video = visual_video_new ();
-        visual->audio = visual_audio_new ();
 
-        if (!visual->actor || !visual->video)
-          goto context_error;*/
 
   out_width = GST_VIDEO_INFO_WIDTH (&scope->vinfo);
   out_height = GST_VIDEO_INFO_HEIGHT (&scope->vinfo);
@@ -485,6 +557,23 @@ gst_gl_audio_visualizer_decide_allocation (GstAudioVisualizer * scope, GstQuery 
     gst_gl_context_del_texture (visual->context, &visual->out_tex_id);
   gst_gl_context_gen_texture (visual->context, &visual->out_tex_id,
       GST_VIDEO_FORMAT_RGBA, out_width, out_height);
+
+
+        /*visual->actor =
+            visual_actor_new (GST_VISUAL_GL_GET_CLASS (visual)->plugin->info->
+            plugname);
+        visual->video = visual_video_new ();
+        visual->audio = visual_audio_new ();
+
+        if (!visual->actor || !visual->video)
+          goto context_error;*/
+
+  gst_gl_context_thread_add (visual->context,
+            (GstGLContextThreadFunc) actor_setup, visual);
+
+        //visual_actor_set_video (visual->actor, visual->video);
+
+
   if (pool == NULL) {
     /* we did not get a pool, make one ourselves then */
     pool = gst_video_buffer_pool_new ();
