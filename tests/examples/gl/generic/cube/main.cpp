@@ -1,6 +1,8 @@
 /*
- * GStreamer
- * Copyright (C) 2008-2009 Julien Isorce <julien.isorce@gmail.com>
+ * GStreamer GLES2 Raspberry Pi example 
+ * Based on http://cgit.freedesktop.org/gstreamer/gst-plugins-bad/tree/tests/examples/gl/generic/cube/main.cpp
+ * Modified for Raspberry Pi/GLES2 by Arnaud Loonstra <arnaud@sphaero.org>
+ * Orginal by Julien Isorce <julien.isorce@gmail.com>
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Library General Public
@@ -18,15 +20,124 @@
  * Boston, MA 02110-1301, USA.
  */
 
-#include <GL/gl.h>
-#include <GL/glu.h>
-#if __WIN32__ || _WIN32
-# include <GL/glext.h>
-#endif
-#include <gst/gst.h>
+/* Compile on a RPI with latest Gstreamer in /usr/local
+$ g++ main.cpp -pthread -I/usr/include/gstreamer-1.0 \
+ -I/usr/include/glib-2.0 \
+ -I/usr/lib/arm-linux-gnueabihf/glib-2.0/include \
+ -I/usr/include/libdrm \
+ -I/opt/vc/include/ \
+ -I/usr/local/include/gstreamer-1.0/ \
+ -L/opt/vc/lib/ -lgstreamer-1.0 -lgobject-2.0 \
+ -lglib-2.0 -lGLESv2 -lEGL
+*/
 
+#include <GLES/gl.h>
+#include <GLES2/gl2.h>
+#include <gst/gst.h>
+#include <stdlib.h>
 #include <iostream>
 #include <string>
+
+static const gchar *simple_vertex_shader_str_gles2 =
+      "attribute vec4 a_position;   \n"
+      "attribute vec2 a_texCoord;   \n"
+      "varying vec2 v_texCoord;     \n"
+      "uniform mat4 mvp_matrix; \n"
+      "void main()                  \n"
+      "{                            \n"
+      "   gl_Position = mvp_matrix * a_position; \n"
+      "   v_texCoord = a_texCoord;  \n"
+      "}                            \n";
+
+static const gchar *simple_fragment_shader_str_gles2 =
+      "#ifdef GL_ES                                        \n"
+      "precision mediump float;                            \n"
+      "#endif                                              \n"
+      "varying vec2 v_texCoord;                            \n"
+      "uniform sampler2D tex;                              \n"
+      "void main()                                         \n"
+      "{                                                   \n"
+      "  gl_FragColor = texture2D( tex, v_texCoord );      \n"
+      "}                                                   \n";
+
+GLint initGL();
+GLuint LoadShader ( GLenum type, const char *shaderSrc );
+GLuint vertexShader;
+GLuint fragmentShader;
+GLuint programObject;
+GLint linked;
+///
+// Create a shader object, load the shader source, and
+// compile the shader.
+//
+GLuint LoadShader ( GLenum type, const char *shaderSrc )
+{
+    GLuint shader;
+    GLint compiled;
+    // Create the shader object
+    shader = glCreateShader ( type );
+    if ( shader == 0 )
+        return 0;
+    // Load the shader source
+    glShaderSource ( shader, 1, &shaderSrc, NULL );
+    // Compile the shader
+    glCompileShader ( shader );
+    // Check the compile status
+    glGetShaderiv ( shader, GL_COMPILE_STATUS, &compiled );
+    if ( !compiled )
+    {
+        GLint infoLen = 0;
+        glGetShaderiv ( shader, GL_INFO_LOG_LENGTH, &infoLen );
+        if ( infoLen > 1 )
+        {
+            char* infoLog = (char*)malloc (sizeof(char) * infoLen );
+            glGetShaderInfoLog ( shader, infoLen, NULL, infoLog );
+            std::cout << "Error compiling shader:\n" << infoLog << "\n";
+            free ( infoLog );
+        }
+        glDeleteShader ( shader );
+        return 0;
+    }
+    return shader;
+}
+
+GLint initGL() {
+    // load vertext/fragment shader
+    vertexShader = LoadShader ( GL_VERTEX_SHADER, simple_vertex_shader_str_gles2 );
+    fragmentShader = LoadShader ( GL_FRAGMENT_SHADER, simple_fragment_shader_str_gles2 );
+
+    // Create the program object
+    programObject = glCreateProgram();
+    if ( programObject == 0 )
+    {
+        std::cout << "error program object\n";
+       return 0;
+    }
+
+    glAttachShader(programObject, vertexShader);
+    glAttachShader(programObject, fragmentShader);
+    // Bind vPosition to attribute 0
+    glBindAttribLocation(programObject, 0, "a_position");
+    // Link the program
+    glLinkProgram(programObject);
+    // Check the link status
+    glGetProgramiv ( programObject, GL_LINK_STATUS, &linked );
+    if ( !linked )
+    {
+        GLint infoLen = 0;
+        glGetProgramiv ( programObject, GL_INFO_LOG_LENGTH, &infoLen );
+        if ( infoLen > 1 )
+        {
+            char* infoLog = (char*)malloc (sizeof(char) * infoLen );
+            glGetProgramInfoLog ( programObject, infoLen, NULL, infoLog );
+            std::cout << "Error linking program:\n" << infoLog << "\n";
+            free ( infoLog );
+        }
+        glDeleteProgram ( programObject );
+        return GL_FALSE;
+    }
+    return GL_TRUE;
+}
 
 static gboolean bus_call (GstBus *bus, GstMessage *msg, gpointer data)
 {
@@ -65,21 +176,70 @@ static gboolean bus_call (GstBus *bus, GstMessage *msg, gpointer data)
 }
 
 //client reshape callback
-static gboolean reshapeCallback (void *gl_sink, void *context, GLuint width, GLuint height, gpointer data)
+static gboolean reshapeCallback (void *gl_sink, void *gl_ctx, GLuint width, GLuint height, gpointer data)
 {
+    std::cout << "Reshape: width=" << width << " height=" << height << "\n";
     glViewport(0, 0, width, height);
-    glMatrixMode(GL_PROJECTION);
-    glLoadIdentity();
-    gluPerspective(45, (gfloat)width/(gfloat)height, 0.1, 100);
-    glMatrixMode(GL_MODELVIEW);
+    //glMatrixMode(GL_PROJECTION);
+    //glLoadIdentity();
+    //gluPerspective(45, (gfloat)width/(gfloat)height, 0.1, 100);
+    //glMatrixMode(GL_MODELVIEW);
 
     return TRUE;
 }
 
+GLfloat vVertices[] = { 
+        -0.5f, 0.5f, 0.0f, // Position 0
+        -0.5f, -0.5f, 0.0f, // Position 1
+        0.5f, -0.5f, 0.0f, // Position 2
+        0.5f, 0.5f, 0.0f, // Position 3, skewed a bit
+        -0.5f, 0.5f, -1.0f, // Position 0
+        -0.5f, -0.5f, -1.0f, // Position 1
+        0.5f, -0.5f, -1.0f, // Position 2
+        0.5f, 0.5f, -1.0f, // Position 3, skewed a bit
+};
+
+GLfloat vTextures[] = { 
+        0.0f, 0.0f, // TexCoord 0
+        0.0f, 1.0f, // TexCoord 1
+        1.0f, 1.0f, // TexCoord 2
+        1.0f, 0.0f, // TexCoord 3
+        0.0f, 0.0f, // TexCoord 0
+        0.0f, 1.0f, // TexCoord 1
+        1.0f, 1.0f, // TexCoord 2
+        1.0f, 0.0f // TexCoord 3
+};
+
+/*GLfloat vVertCoord[] = { 
+     // For cube we would need only 8 vertices but we have to
+     // duplicate vertex for each face because texture coordinate
+     // is different.
+        -0.5f, 0.5f, 0.0f, // Position 0
+        -0.5f, -0.5f, 0.0f, // Position 1
+        0.5f, -0.5f, 0.0f, // Position 2
+        0.5f, 0.5f, 0.0f, // Position 3, skewed a bit
+        -0.5f, 0.5f, -1.0f, // Position 4
+        -0.5f, -0.5f, -1.0f, // Position 5
+        0.5f, -0.5f, -1.0f, // Position 6
+        0.5f, 0.5f, -1.0f, // Position 7, skewed a bit
+};*/
+
+GLushort indices[] = { 0, 1, 2, 0, 2, 3,
+                       4, 5, 6, 4, 6, 7,
+                       0, 4, 5, 0, 5, 1,  
+                       1, 2, 5, 1, 5, 6,  
+                       0, 4, 7, 0, 7, 3,
+                       3, 7, 6, 3, 6, 2
+};
 //client draw callback
-static gboolean drawCallback (void * gl_sink, void *context, GLuint texture, GLuint width, GLuint height, gpointer data)
+static gboolean drawCallback (void * gl_sink, void * gl_ctx, GLuint texture, GLuint width, GLuint height, gpointer data)
 {
-    static GLfloat	xrot = 0;
+    //std::cout << "draw:" << vertexShader << ":" << fragmentShader << ":" << programObject << ":" << linked << "\n"; 
+    if (!linked) {
+        initGL();
+    }
+
+    /* static GLfloat	xrot = 0;
     static GLfloat	yrot = 0;
     static GLfloat	zrot = 0;
     static GTimeVal current_time;
@@ -94,67 +254,46 @@ static gboolean drawCallback (void * gl_sink, void *context, GLuint texture, GLu
         std::cout << "GRPHIC FPS = " << nbFrames << std::endl;
         nbFrames = 0;
         last_sec = current_time.tv_sec;
+    }*/
+
+    //std::cout << "draw:" << vertexShader << ":" << fragmentShader << ":" << programObject << ":" << linked << "\n"; 
+    if (!linked) {
+        initGL();
     }
 
-    glEnable(GL_DEPTH_TEST);
 
-    glEnable (GL_TEXTURE_2D);
+    glClear ( GL_COLOR_BUFFER_BIT );
+    glUseProgram ( programObject );
+
+    // Calculate model view transformation
+    /*QMatrix4x4 matrix;
+    matrix.translate(0.0, 0.0, -5.0);
+    matrix.rotate(rotation);
+
+     // Set modelview-projection matrix
+    glUniformMatrix4f(programObject, "mvp_matrix", projection * matrix);*/
+
+    
+    // Load the vertex position
+    GLint positionLoc = glGetAttribLocation ( programObject, "a_position" );
+    glVertexAttribPointer ( positionLoc, 3, GL_FLOAT, GL_FALSE, 0, vVertices );
+    // Load the texture coordinate
+    GLint texCoordLoc = glGetAttribLocation ( programObject, "a_texCoord");
+    glVertexAttribPointer ( texCoordLoc, 2, GL_FLOAT, GL_FALSE, 0, vTextures);
+    glEnableVertexAttribArray ( positionLoc );
+    glEnableVertexAttribArray ( texCoordLoc );
+
+
+    glActiveTexture ( GL_TEXTURE0 );
     glBindTexture (GL_TEXTURE_2D, texture);
-    glTexParameteri (GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-    glTexParameteri (GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-    glTexParameteri (GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-    glTexParameteri (GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-    glTexEnvi (GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_REPLACE);
+    //glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+    //glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+    //Set the texture sampler to texture unit 0
+    GLint tex = glGetUniformLocation ( programObject, "tex");
+    glUniform1i ( tex, 0 );
 
-    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-    glMatrixMode(GL_MODELVIEW);
-    glLoadIdentity();
-
-    glTranslatef(0.0f,0.0f,-5.0f);
-
-    glRotatef(xrot,1.0f,0.0f,0.0f);
-    glRotatef(yrot,0.0f,1.0f,0.0f);
-    glRotatef(zrot,0.0f,0.0f,1.0f);
-
-    glBegin(GL_QUADS);
-	      // Front Face
-	      glTexCoord2f(1.0f, 0.0f); glVertex3f(-1.0f, -1.0f,  1.0f);
-	      glTexCoord2f(0.0f, 0.0f); glVertex3f( 1.0f, -1.0f,  1.0f);
-	      glTexCoord2f(0.0f, 1.0f); glVertex3f( 1.0f,  1.0f,  1.0f);
-	      glTexCoord2f(1.0f, 1.0f); glVertex3f(-1.0f,  1.0f,  1.0f);
-	      // Back Face
-	      glTexCoord2f(0.0f, 0.0f); glVertex3f(-1.0f, -1.0f, -1.0f);
-	      glTexCoord2f(0.0f, 1.0f); glVertex3f(-1.0f,  1.0f, -1.0f);
-	      glTexCoord2f(1.0f, 1.0f); glVertex3f( 1.0f,  1.0f, -1.0f);
-	      glTexCoord2f(1.0f, 0.0f); glVertex3f( 1.0f, -1.0f, -1.0f);
-	      // Top Face
-	      glTexCoord2f(1.0f, 1.0f); glVertex3f(-1.0f,  1.0f, -1.0f);
-	      glTexCoord2f(1.0f, 0.0f); glVertex3f(-1.0f,  1.0f,  1.0f);
-	      glTexCoord2f(0.0f, 0.0f); glVertex3f( 1.0f,  1.0f,  1.0f);
-	      glTexCoord2f(0.0f, 1.0f); glVertex3f( 1.0f,  1.0f, -1.0f);
-	      // Bottom Face
-	      glTexCoord2f(1.0f, 0.0f); glVertex3f(-1.0f, -1.0f, -1.0f);
-	      glTexCoord2f(0.0f, 0.0f); glVertex3f( 1.0f, -1.0f, -1.0f);
-	      glTexCoord2f(0.0f, 1.0f); glVertex3f( 1.0f, -1.0f,  1.0f);
-	      glTexCoord2f(1.0f, 1.0f); glVertex3f(-1.0f, -1.0f,  1.0f);
-	      // Right face
-	      glTexCoord2f(0.0f, 0.0f); glVertex3f( 1.0f, -1.0f, -1.0f);
-	      glTexCoord2f(0.0f, 1.0f); glVertex3f( 1.0f,  1.0f, -1.0f);
-	      glTexCoord2f(1.0f, 1.0f); glVertex3f( 1.0f,  1.0f,  1.0f);
-	      glTexCoord2f(1.0f, 0.0f); glVertex3f( 1.0f, -1.0f,  1.0f);
-	      // Left Face
-	      glTexCoord2f(1.0f, 0.0f); glVertex3f(-1.0f, -1.0f, -1.0f);
-	      glTexCoord2f(0.0f, 0.0f); glVertex3f(-1.0f, -1.0f,  1.0f);
-	      glTexCoord2f(0.0f, 1.0f); glVertex3f(-1.0f,  1.0f,  1.0f);
-	      glTexCoord2f(1.0f, 1.0f); glVertex3f(-1.0f,  1.0f, -1.0f);
-    glEnd();
-
-    xrot+=0.3f;
-    yrot+=0.2f;
-    zrot+=0.4f;
-
-    //return TRUE causes a postRedisplay
-    return TRUE;
+    glDrawElements ( GL_TRIANGLES, 6, GL_UNSIGNED_SHORT, indices );
+    return GST_FLOW_OK;
 }
 
 
@@ -217,7 +356,6 @@ gint main (gint argc, gchar *argv[])
         return -1 ;
     }
 
-    /* run */
     ret = gst_element_set_state (pipeline, GST_STATE_PLAYING);
     if (ret == GST_STATE_CHANGE_FAILURE)
     {
@@ -237,11 +375,13 @@ gint main (gint argc, gchar *argv[])
         return -1;
     }
 
+    // run loop
     g_main_loop_run (loop);
 
     /* clean up */
     gst_element_set_state (pipeline, GST_STATE_NULL);
     gst_object_unref (pipeline);
-
+    glDeleteShader(vertexShader);
+    glDeleteShader(fragmentShader);
     return 0;
 }
