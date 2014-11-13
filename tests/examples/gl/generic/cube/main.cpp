@@ -45,10 +45,11 @@ static const gchar *simple_vertex_shader_str_gles2 =
       "varying vec2 v_texCoord;     \n"
       "uniform mat4 proj_matrix; \n"
       "uniform mat4 rot_matrix; \n"
-      "uniform mat4 mv_matrix; \n"
+      "uniform mat4 view_matrix; \n"
+      "uniform mat4 model_matrix; \n"
       "void main()                  \n"
       "{                            \n"
-      "   gl_Position = a_position; \n"
+      "   gl_Position = proj_matrix * view_matrix * model_matrix * a_position; \n"
       "   v_texCoord = a_texCoord;  \n"
       "}                            \n";
 
@@ -274,7 +275,7 @@ static gboolean drawCallback (void * gl_sink, void * gl_ctx, GLuint texture, GLu
 
   float near = 0.1;
   float far = 100;
-  float aspectRatio = 1.0;
+  float aspectRatio = height / width;
   float DEG2RAD = 3.14159f / 180.0f;
   float fov = 90*DEG2RAD;
   float h = cosf(0.5f*fov)/sinf(0.5f*fov);
@@ -287,7 +288,58 @@ static gboolean drawCallback (void * gl_sink, void * gl_ctx, GLuint texture, GLu
                        0.0, h, 0.0, 0.0,
                        0.0, 0.0, a, 1.0,
                        0.0, 0.0, b, 0.0};
- 
+/*
+valType h = glm::cos(valType(0.5) * rad) / glm::sin(valType(0.5) * rad);
+            valType w = h * height / width; ///todo max(width , Height) /
+min(width , Height)?
+
+            detail::tmat4x4<valType> Result(valType(0));
+            Result[0][0] = w;
+            Result[1][1] = h;
+            Result[2][2] = - (zFar + zNear) / (zFar - zNear);
+            Result[2][3] = - valType(1);
+            Result[3][2] = - (valType(2) * zFar * zNear) / (zFar - zNear);
+            return Result;
+    */
+
+ /*GLM_FUNC_QUALIFIER detail::tmat4x4<T, P> lookAt
+  (
+    detail::tvec3<T, P> const & eye,
+    detail::tvec3<T, P> const & center,
+    detail::tvec3<T, P> const & up
+  )
+  {
+    detail::tvec3<T, P> f(normalize(center - eye));
+    detail::tvec3<T, P> s(normalize(cross(f, up)));
+    detail::tvec3<T, P> u(cross(s, f));
+
+    detail::tmat4x4<T, P> Result(1);
+    Result[0][0] = s.x;
+    Result[1][0] = s.y;
+    Result[2][0] = s.z;
+    Result[0][1] = u.x;
+    Result[1][1] = u.y;
+    Result[2][1] = u.z;
+    Result[0][2] =-f.x;
+    Result[1][2] =-f.y;
+    Result[2][2] =-f.z;
+    Result[3][0] =-dot(s, eye);
+    Result[3][1] =-dot(u, eye);
+    Result[3][2] = dot(f, eye);
+    return Result;
+  }
+    eye = (0, 0, 1);
+    center = 0, 0, 0;
+    up = (0, 1, 0);
+    f = center - eye = (0, 0, -1);
+    s = (-1, 0, 0);
+    u = (0, -1, 0);*/
+
+    GLfloat view_matrix[] = {-1.0, 0.0, 0.0, 0.0,
+                       0.0, -1.0, 0.0, 0.0,
+                       0.0, 0.0, 1.0, 0.0,
+                       0.0, 0.0, -1.0, 1.0 };
+
     float xrad = xrot * M_PI / 180.0;
 
     GLfloat xrotation_matrix[] = {
@@ -297,7 +349,7 @@ static gboolean drawCallback (void * gl_sink, void * gl_ctx, GLuint texture, GLu
           };
 
     // Calculate model view transformation
-    GLfloat mv_matrix[] = {1.0, 0.0, 0.0, 0.0,
+    GLfloat model_matrix[] = {1.0, 0.0, 0.0, 0.0,
               0.0, 1.0, 0.0, 0.0,
               0.0, 0.0, 1.0, 0.0,
               0.0, 0.0, 0.0, 1.0};
@@ -305,10 +357,12 @@ static gboolean drawCallback (void * gl_sink, void * gl_ctx, GLuint texture, GLu
      // Set modelview-projection matrix
 
     GLint projMatrixLoc = glGetAttribLocation ( programObject, "proj_matrix");
-    GLint mvMatrixLoc = glGetAttribLocation ( programObject, "mv_matrix");
+    GLint viewMatrixLoc = glGetAttribLocation ( programObject, "view_matrix");
+    GLint modelMatrixLoc = glGetAttribLocation ( programObject, "model_matrix");
     GLint rotMatrixLoc = glGetAttribLocation ( programObject, "rot_matrix");
     glUniformMatrix4fv(projMatrixLoc, 1, GL_TRUE, projection_matrix);
-    glUniformMatrix4fv(mvMatrixLoc, 1, GL_TRUE, mv_matrix);
+    glUniformMatrix4fv(modelMatrixLoc, 1, GL_TRUE, model_matrix);
+    glUniformMatrix4fv(viewMatrixLoc, 1, GL_TRUE, view_matrix);
     glUniformMatrix4fv(rotMatrixLoc, 1, GL_TRUE, xrotation_matrix);
 
     
