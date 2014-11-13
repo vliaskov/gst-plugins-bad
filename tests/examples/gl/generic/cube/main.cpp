@@ -37,15 +37,18 @@ $ g++ main.cpp -pthread -I/usr/include/gstreamer-1.0 \
 #include <stdlib.h>
 #include <iostream>
 #include <string>
+#include <math.h>
 
 static const gchar *simple_vertex_shader_str_gles2 =
       "attribute vec4 a_position;   \n"
       "attribute vec2 a_texCoord;   \n"
       "varying vec2 v_texCoord;     \n"
-      "uniform mat4 mvp_matrix; \n"
+      "uniform mat4 proj_matrix; \n"
+      "uniform mat4 rot_matrix; \n"
+      "uniform mat4 mv_matrix; \n"
       "void main()                  \n"
       "{                            \n"
-      "   gl_Position = mvp_matrix * a_position; \n"
+      "   gl_Position = a_position; \n"
       "   v_texCoord = a_texCoord;  \n"
       "}                            \n";
 
@@ -180,6 +183,7 @@ static gboolean reshapeCallback (void *gl_sink, void *gl_ctx, GLuint width, GLui
 {
     std::cout << "Reshape: width=" << width << " height=" << height << "\n";
     glViewport(0, 0, width, height);
+
     //glMatrixMode(GL_PROJECTION);
     //glLoadIdentity();
     //gluPerspective(45, (gfloat)width/(gfloat)height, 0.1, 100);
@@ -239,9 +243,9 @@ static gboolean drawCallback (void * gl_sink, void * gl_ctx, GLuint texture, GLu
         initGL();
     }
 
-    /* static GLfloat	xrot = 0;
-    static GLfloat	yrot = 0;
-    static GLfloat	zrot = 0;
+     static GLfloat	xrot = 0;
+    //static GLfloat	yrot = 0;
+    //static GLfloat	zrot = 0;
     static GTimeVal current_time;
     static glong last_sec = current_time.tv_sec;
     static gint nbFrames = 0;
@@ -254,24 +258,58 @@ static gboolean drawCallback (void * gl_sink, void * gl_ctx, GLuint texture, GLu
         std::cout << "GRPHIC FPS = " << nbFrames << std::endl;
         nbFrames = 0;
         last_sec = current_time.tv_sec;
-    }*/
-
-    //std::cout << "draw:" << vertexShader << ":" << fragmentShader << ":" << programObject << ":" << linked << "\n"; 
-    if (!linked) {
-        initGL();
     }
 
+    //std::cout << "draw:" << vertexShader << ":" << fragmentShader << ":" << programObject << ":" << linked << "\n"; 
+    /*if (!linked) {
+        initGL();
+    }*/
 
     glClear ( GL_COLOR_BUFFER_BIT );
     glUseProgram ( programObject );
 
+
+    //float w_reciprocal = 1.0/(float)width;
+    //float h_reciprocal = 1.0/(float)height;
+
+  float near = 0.1;
+  float far = 100;
+  float aspectRatio = 1.0;
+  float DEG2RAD = 3.14159f / 180.0f;
+  float fov = 90*DEG2RAD;
+  float h = cosf(0.5f*fov)/sinf(0.5f*fov);
+  float w = h * aspectRatio;
+  float a =  - (near+far)/(near - far);
+  float b = - ((2*far*near)/(far-near));
+
+
+    GLfloat projection_matrix[] = {w, 0.0, 0.0, 0.0,
+                       0.0, h, 0.0, 0.0,
+                       0.0, 0.0, a, 1.0,
+                       0.0, 0.0, b, 0.0};
+ 
+    float xrad = xrot * M_PI / 180.0;
+
+    GLfloat xrotation_matrix[] = {
+            1.0, 0.0, 0.0, 
+            0.0, cos (xrad), -sin (xrad), 
+            1.0, -sin (xrad), cos (xrad)
+          };
+
     // Calculate model view transformation
-    /*QMatrix4x4 matrix;
-    matrix.translate(0.0, 0.0, -5.0);
-    matrix.rotate(rotation);
+    GLfloat mv_matrix[] = {1.0, 0.0, 0.0, 0.0,
+              0.0, 1.0, 0.0, 0.0,
+              0.0, 0.0, 1.0, 0.0,
+              0.0, 0.0, 0.0, 1.0};
 
      // Set modelview-projection matrix
-    glUniformMatrix4f(programObject, "mvp_matrix", projection * matrix);*/
+
+    GLint projMatrixLoc = glGetAttribLocation ( programObject, "proj_matrix");
+    GLint mvMatrixLoc = glGetAttribLocation ( programObject, "mv_matrix");
+    GLint rotMatrixLoc = glGetAttribLocation ( programObject, "rot_matrix");
+    glUniformMatrix4fv(projMatrixLoc, 1, GL_TRUE, projection_matrix);
+    glUniformMatrix4fv(mvMatrixLoc, 1, GL_TRUE, mv_matrix);
+    glUniformMatrix4fv(rotMatrixLoc, 1, GL_TRUE, xrotation_matrix);
 
     
     // Load the vertex position
