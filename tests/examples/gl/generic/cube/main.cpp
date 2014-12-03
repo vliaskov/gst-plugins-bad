@@ -49,9 +49,12 @@ static const gchar *simple_vertex_shader_str_gles2 =
       "uniform mat4 model_matrix; \n"
       "void main()                  \n"
       "{                            \n"
-      "   gl_Position = proj_matrix * view_matrix * model_matrix * a_position; \n"
+      "   gl_Position = gl_ProjectionMatrix * gl_ModelViewMatrix * a_position; \n"
       "   v_texCoord = a_texCoord;  \n"
       "}                            \n";
+      //"   gl_Position = a_position; \n"
+      //"   gl_Position = gl_ProjectionMatrix * gl_ModelViewMatrix * a_position; \n"
+      //"   gl_Position = proj_matrix * view_matrix * model_matrix * a_position; \n"
 
 static const gchar *simple_fragment_shader_str_gles2 =
       "#ifdef GL_ES                                        \n"
@@ -193,15 +196,30 @@ static gboolean reshapeCallback (void *gl_sink, void *gl_ctx, GLuint width, GLui
     return TRUE;
 }
 
+#define FRONTX -0.5f
+#define FRONTY -0.5f
+#define FRONTZ 0.5f
+#define WIDTH 1.0f
+#define HEIGHT 1.0f
+#define DEPTH 1.0f
+
 GLfloat vVertices[] = { 
-        -0.5f, 0.5f, 0.0f, // Position 0
+        FRONTX, FRONTY, FRONTZ, // Position 0
+        FRONTX + WIDTH, FRONTY, FRONTZ, // Position 1
+        FRONTX + WIDTH, FRONTY + HEIGHT, FRONTZ, // Position 2
+        FRONTX, FRONTY + HEIGHT, FRONTZ, // Position 3
+        FRONTX, FRONTY, FRONTZ + DEPTH, // Position 4
+        FRONTX + WIDTH, FRONTY, FRONTZ + DEPTH, // Position 5
+        FRONTX + WIDTH, FRONTY + HEIGHT, FRONTZ + DEPTH, // Position 6
+        FRONTX, FRONTY + HEIGHT, FRONTZ + DEPTH, // Position 7
+        /*-0.5f, 0.5f, 0.0f, // Position 1
         -0.5f, -0.5f, 0.0f, // Position 1
         0.5f, -0.5f, 0.0f, // Position 2
         0.5f, 0.5f, 0.0f, // Position 3, skewed a bit
         -0.5f, 0.5f, -1.0f, // Position 0
         -0.5f, -0.5f, -1.0f, // Position 1
         0.5f, -0.5f, -1.0f, // Position 2
-        0.5f, 0.5f, -1.0f, // Position 3, skewed a bit
+        0.5f, 0.5f, -1.0f, // Position 3, skewed a bit*/
 };
 
 GLfloat vTextures[] = { 
@@ -332,11 +350,12 @@ min(width , Height)?
     center = 0, 0, 0;
     up = (0, 1, 0);
     f = center - eye = (0, 0, -1);
-    s = (-1, 0, 0);
-    u = (0, -1, 0);*/
+    s = (-1, 0, 0); FIX: ii think it is s = (1, 0, 0);
+    u = (0, -1, 0); FIX: I think it is u = (0, 1, 0);
+    */
 
-    GLfloat view_matrix[] = {-1.0, 0.0, 0.0, 0.0,
-                       0.0, -1.0, 0.0, 0.0,
+    GLfloat view_matrix[] = {1.0, 0.0, 0.0, 0.0,
+                       0.0, 1.0, 0.0, 0.0,
                        0.0, 0.0, 1.0, 0.0,
                        0.0, 0.0, -1.0, 1.0 };
 
