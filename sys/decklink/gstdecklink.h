@@ -135,8 +135,11 @@ struct _GstDecklinkInput {
   /* Everything below protected by mutex */
   GMutex lock;
 
+  /* Set by the video source */
+  void (*got_video_frame) (GstElement *videosrc, IDeckLinkVideoInputFrame * frame, GstClockTime capture_time);
+
   /* Set by the audio source */
-  GstClock *audio_clock;
+  void (*got_audio_packet) (GstElement *videosrc, IDeckLinkAudioInputPacket * packet, GstClockTime capture_time);
 
   /* <private> */
   GstElement *audiosrc;
@@ -148,5 +151,8 @@ void                gst_decklink_release_nth_output (gint n, GstElement * sink, 
 
 void                gst_decklink_output_set_audio_clock (GstDecklinkOutput * output, GstClock * clock);
 GstClock *          gst_decklink_output_get_audio_clock (GstDecklinkOutput * output);
+
+GstDecklinkInput *  gst_decklink_acquire_nth_input (gint n, GstElement * src, gboolean is_audio);
+void                gst_decklink_release_nth_input (gint n, GstElement * src, gboolean is_audio);
 
 #endif

@@ -26,7 +26,9 @@ libgstdecklink_la_LIBTOOLFLAGS = $(GST_PLUGIN_LIBTOOLFLAGS)
 libgstdecklink_la_SOURCES = \
 	gstdecklink.cpp \
 	gstdecklinkaudiosink.cpp \
-	gstdecklinkvideosink.cpp
+	gstdecklinkvideosink.cpp \
+	gstdecklinkaudiosrc.cpp \
+	gstdecklinkvideosrc.cpp
 
 if DECKLINK_OSX
 libgstdecklink_la_SOURCES += \
@@ -41,6 +43,8 @@ noinst_HEADERS = \
 	gstdecklink.h \
 	gstdecklinkaudiosink.h \
 	gstdecklinkvideosink.h \
+	gstdecklinkaudiosrc.h \
+	gstdecklinkvideosrc.h \
 	linux/DeckLinkAPI.h \
 	linux/LinuxCOM.h \
 	osx/DeckLinkAPI.h \
