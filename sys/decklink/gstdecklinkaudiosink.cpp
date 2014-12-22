@@ -417,7 +417,7 @@ gst_decklink_audio_sink_ringbuffer_open_device (GstAudioRingBuffer * rb)
   }
 
   gst_decklink_output_set_audio_clock (self->output,
-      GST_AUDIO_BASE_SINK_CAST (self->sink)->provided_clock);
+      GST_AUDIO_BASE_SINK (self->sink)->provided_clock);
 
   return TRUE;
 }
@@ -509,7 +509,7 @@ gst_decklink_audio_sink_init (GstDecklinkAudioSink * self)
   // TODO: This is probably related to the video mode that
   // is selected, but not directly it seems. Choosing the
   // duration of a frame does not work.
-  GST_AUDIO_BASE_SINK_CAST (self)->latency_time = 25000;
+  GST_AUDIO_BASE_SINK (self)->latency_time = 25000;
 }
 
 void
