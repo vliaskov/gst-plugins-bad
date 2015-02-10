@@ -39,6 +39,8 @@ $ g++ main.cpp -pthread -I/usr/include/gstreamer-1.0 \
 #include <string>
 #include <math.h>
 
+GLuint vbo[4];
+
 static const gchar *simple_vertex_shader_str_gles2 =
       "attribute vec4 a_position;   \n"
       "attribute vec2 a_texCoord;   \n"
@@ -47,13 +49,17 @@ static const gchar *simple_vertex_shader_str_gles2 =
       "uniform mat4 rot_matrix; \n"
       "uniform mat4 view_matrix; \n"
       "uniform mat4 model_matrix; \n"
+      "uniform float anglex;\n"
+      "uniform float angley;\n"
+      "uniform float anglez;\n"
+      "mat4 rotz_matrix = mat4(cos(anglez), -sin(anglez), 0.0, 0.0, sin(anglez), cos(anglez), 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0);\n"
+      "mat4 roty_matrix = mat4(cos(angley), 0.0, sin(angley), 0.0, 0.0, 1.0, 0.0, 0.0, -sin(angley), 0.0, cos(angley), 0.0, 0.0, 0.0, 0.0, 1.0);\n"
+      "mat4 rotx_matrix = mat4(1.0, 0.0, 0.0, 0.0, 0.0, cos(anglex), -sin(anglex), 0.0, 0.0, sin(anglex), cos(anglex), 0.0, 0.0, 0.0, 0.0, 1.0);\n"
       "void main()                  \n"
       "{                            \n"
       "   gl_Position = gl_ProjectionMatrix * gl_ModelViewMatrix * a_position; \n"
       "   v_texCoord = a_texCoord;  \n"
       "}                            \n";
-      //"   gl_Position = a_position; \n"
-      //"   gl_Position = gl_ProjectionMatrix * gl_ModelViewMatrix * a_position; \n"
       //"   gl_Position = proj_matrix * view_matrix * model_matrix * a_position; \n"
 
 static const gchar *simple_fragment_shader_str_gles2 =
@@ -66,6 +72,146 @@ static const gchar *simple_fragment_shader_str_gles2 =
       "{                                                   \n"
       "  gl_FragColor = texture2D( tex, v_texCoord );      \n"
       "}                                                   \n";
+
+#define FRONTX -0.5f
+#define FRONTY -0.5f
+#define FRONTZ 0.5f
+#define WIDTH 1.0f
+#define HEIGHT 1.0f
+#define DEPTH 1.0f
+
+GLfloat vVertices[] = { 
+        FRONTX, FRONTY, FRONTZ, // Position 0
+        FRONTX + WIDTH, FRONTY, FRONTZ, // Position 1
+        FRONTX + WIDTH, FRONTY + HEIGHT, FRONTZ, // Position 2
+        FRONTX, FRONTY + HEIGHT, FRONTZ, // Position 3
+        FRONTX, FRONTY, FRONTZ + DEPTH, // Position 4
+        FRONTX + WIDTH, FRONTY, FRONTZ + DEPTH, // Position 5
+        FRONTX + WIDTH, FRONTY + HEIGHT, FRONTZ + DEPTH, // Position 6
+        FRONTX, FRONTY + HEIGHT, FRONTZ + DEPTH, // Position 7
+};
+
+GLfloat vTextures[] = { 
+        0.0f, 0.0f, // TexCoord 0
+        0.0f, 1.0f, // TexCoord 1
+        1.0f, 1.0f, // TexCoord 2
+        1.0f, 0.0f, // TexCoord 3
+        0.0f, 0.0f, // TexCoord 0
+        0.0f, 1.0f, // TexCoord 1
+        1.0f, 1.0f, // TexCoord 2
+        1.0f, 0.0f // TexCoord 3
+};
+
+GLfloat vStrip[] = { 
+
+        FRONTX, FRONTY, FRONTZ + DEPTH, 0.0, 0.0,
+        FRONTX + WIDTH, FRONTY, FRONTZ + DEPTH, 1.0, 0.0,
+        FRONTX, FRONTY + HEIGHT, FRONTZ + DEPTH, 0.0, 1.0,
+        FRONTX + WIDTH, FRONTY + HEIGHT, FRONTZ + DEPTH, 1.0, 1.0,
+
+        FRONTX + WIDTH, FRONTY, FRONTZ + DEPTH, 0.0, 0.0,
+        FRONTX + WIDTH, FRONTY, FRONTZ, 1.0, 0.0,
+        FRONTX + WIDTH, FRONTY + HEIGHT, FRONTZ + DEPTH, 0.0, 1.0,
+        FRONTX + WIDTH, FRONTY + HEIGHT, FRONTZ, 1.0, 1.0,
+
+        FRONTX + WIDTH, FRONTY, FRONTZ, 0.0, 0.0,
+        FRONTX, FRONTY, FRONTZ, 1.0, 0.0,
+        FRONTX + WIDTH, FRONTY + HEIGHT, FRONTZ, 0.0, 1.0,
+        FRONTX, FRONTY + HEIGHT, FRONTZ, 0.0, 1.0,
+
+        FRONTX, FRONTY, FRONTZ, 0.0, 0.0,
+        FRONTX, FRONTY, FRONTZ + DEPTH, 1.0, 0.0,
+        FRONTX, FRONTY + HEIGHT, FRONTZ, 0.0, 1.0,
+        FRONTX, FRONTY + HEIGHT, FRONTZ + DEPTH, 0.0, 1.0,
+
+        FRONTX, FRONTY, FRONTZ, 0.0, 0.0,
+        FRONTX + WIDTH, FRONTY, FRONTZ, 1.0, 0.0,
+        FRONTX, FRONTY, FRONTZ + DEPTH, 0.0, 1.0,
+        FRONTX + WIDTH, FRONTY, FRONTZ + DEPTH, 0.0, 1.0,
+
+        FRONTX, FRONTY + HEIGHT, FRONTZ + DEPTH, 0.0, 0.0,
+        FRONTX + WIDTH, FRONTY + HEIGHT, FRONTZ + DEPTH, 1.0, 0.0,
+        FRONTX, FRONTY + HEIGHT, FRONTZ, 0.0, 1.0,
+        FRONTX + WIDTH, FRONTY + HEIGHT, FRONTZ, 0.0, 1.0,
+
+};
+
+GLfloat vStripVertices[] = { 
+
+        FRONTX, FRONTY, FRONTZ + DEPTH,
+        FRONTX + WIDTH, FRONTY, FRONTZ + DEPTH,
+        FRONTX, FRONTY + HEIGHT, FRONTZ + DEPTH,
+        FRONTX + WIDTH, FRONTY + HEIGHT, FRONTZ + DEPTH,
+
+        FRONTX + WIDTH, FRONTY, FRONTZ + DEPTH,
+        FRONTX + WIDTH, FRONTY, FRONTZ,
+        FRONTX + WIDTH, FRONTY + HEIGHT, FRONTZ + DEPTH,
+        FRONTX + WIDTH, FRONTY + HEIGHT, FRONTZ,
+
+        FRONTX + WIDTH, FRONTY, FRONTZ,
+        FRONTX, FRONTY, FRONTZ,
+        FRONTX + WIDTH, FRONTY + HEIGHT, FRONTZ,
+        FRONTX, FRONTY + HEIGHT, FRONTZ,
+
+        FRONTX, FRONTY, FRONTZ,
+        FRONTX, FRONTY, FRONTZ + DEPTH,
+        FRONTX, FRONTY + HEIGHT, FRONTZ,
+        FRONTX, FRONTY + HEIGHT, FRONTZ + DEPTH,
+
+        FRONTX, FRONTY, FRONTZ,
+        FRONTX + WIDTH, FRONTY, FRONTZ,
+        FRONTX, FRONTY, FRONTZ + DEPTH,
+        FRONTX + WIDTH, FRONTY, FRONTZ + DEPTH,
+
+        FRONTX, FRONTY + HEIGHT, FRONTZ + DEPTH,
+        FRONTX + WIDTH, FRONTY + HEIGHT, FRONTZ + DEPTH,
+        FRONTX, FRONTY + HEIGHT, FRONTZ,
+        FRONTX + WIDTH, FRONTY + HEIGHT, FRONTZ,
+
+};
+
+GLfloat vStripTextures[] = { 
+
+        0.0, 0.0,
+        1.0, 0.0,
+        0.0, 1.0,
+        1.0, 1.0,
+
+        0.0, 0.0,
+        1.0, 0.0,
+        0.0, 1.0,
+        1.0, 1.0,
+
+        0.0, 0.0,
+        1.0, 0.0,
+        0.0, 1.0,
+        0.0, 1.0,
+
+        0.0, 0.0,
+        1.0, 0.0,
+        0.0, 1.0,
+        0.0, 1.0,
+
+        0.0, 0.0,
+        1.0, 0.0,
+        0.0, 1.0,
+        0.0, 1.0,
+
+        0.0, 0.0,
+        1.0, 0.0,
+        0.0, 1.0,
+        0.0, 1.0,
+
+};
+
+GLuint stripindices[] = {
+  0,  1,  2,  3,  3,     // Face 0 - triangle strip ( v0,  v1,  v2,  v3)
+  4,  4,  5,  6,  7,  7, // Face 1 - triangle strip ( v4,  v5,  v6,  v7)
+  8,  8,  9, 10, 11, 11, // Face 2 - triangle strip ( v8,  v9, v10, v11)
+  12, 12, 13, 14, 15, 15, // Face 3 - triangle strip (v12, v13, v14, v15)
+  16, 16, 17, 18, 19, 19, // Face 4 - triangle strip (v16, v17, v18, v19)
+  20, 20, 21, 22, 23,      // Face 5 - triangle strip (v20, v21, v22, v23)
+};
 
 GLint initGL();
 GLuint LoadShader ( GLenum type, const char *shaderSrc );
@@ -143,6 +289,28 @@ GLint initGL() {
         glDeleteProgram ( programObject );
         return GL_FALSE;
     }
+
+    // Generate VBOs
+    glGenBuffers(4, vbo); 
+
+    // Transfer vertex data to VBO 0
+    glBindBuffer(GL_ARRAY_BUFFER, vbo[0]);
+    glBufferData(GL_ARRAY_BUFFER, 24 * 5 * sizeof(GLfloat), vStrip,
+      GL_STATIC_DRAW);
+
+     // Transfer index data to VBO 1
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, vbo[1]);
+    glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(stripindices), stripindices,
+      GL_STATIC_DRAW);
+
+    glBindBuffer(GL_ARRAY_BUFFER, vbo[2]);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(vStripVertices), vStripVertices,
+      GL_STATIC_DRAW);
+
+    glBindBuffer(GL_ARRAY_BUFFER, vbo[3]);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(vStripTextures), vStripTextures,
+      GL_STATIC_DRAW);
+
     return GL_TRUE;
 }
 
@@ -196,56 +364,6 @@ static gboolean reshapeCallback (void *gl_sink, void *gl_ctx, GLuint width, GLui
     return TRUE;
 }
 
-#define FRONTX -0.5f
-#define FRONTY -0.5f
-#define FRONTZ 0.5f
-#define WIDTH 1.0f
-#define HEIGHT 1.0f
-#define DEPTH 1.0f
-
-GLfloat vVertices[] = { 
-        FRONTX, FRONTY, FRONTZ, // Position 0
-        FRONTX + WIDTH, FRONTY, FRONTZ, // Position 1
-        FRONTX + WIDTH, FRONTY + HEIGHT, FRONTZ, // Position 2
-        FRONTX, FRONTY + HEIGHT, FRONTZ, // Position 3
-        FRONTX, FRONTY, FRONTZ + DEPTH, // Position 4
-        FRONTX + WIDTH, FRONTY, FRONTZ + DEPTH, // Position 5
-        FRONTX + WIDTH, FRONTY + HEIGHT, FRONTZ + DEPTH, // Position 6
-        FRONTX, FRONTY + HEIGHT, FRONTZ + DEPTH, // Position 7
-        /*-0.5f, 0.5f, 0.0f, // Position 1
-        -0.5f, -0.5f, 0.0f, // Position 1
-        0.5f, -0.5f, 0.0f, // Position 2
-        0.5f, 0.5f, 0.0f, // Position 3, skewed a bit
-        -0.5f, 0.5f, -1.0f, // Position 0
-        -0.5f, -0.5f, -1.0f, // Position 1
-        0.5f, -0.5f, -1.0f, // Position 2
-        0.5f, 0.5f, -1.0f, // Position 3, skewed a bit*/
-};
-
-GLfloat vTextures[] = { 
-        0.0f, 0.0f, // TexCoord 0
-        0.0f, 1.0f, // TexCoord 1
-        1.0f, 1.0f, // TexCoord 2
-        1.0f, 0.0f, // TexCoord 3
-        0.0f, 0.0f, // TexCoord 0
-        0.0f, 1.0f, // TexCoord 1
-        1.0f, 1.0f, // TexCoord 2
-        1.0f, 0.0f // TexCoord 3
-};
-
-/*GLfloat vVertCoord[] = { 
-     // For cube we would need only 8 vertices but we have to
-     // duplicate vertex for each face because texture coordinate
-     // is different.
-        -0.5f, 0.5f, 0.0f, // Position 0
-        -0.5f, -0.5f, 0.0f, // Position 1
-        0.5f, -0.5f, 0.0f, // Position 2
-        0.5f, 0.5f, 0.0f, // Position 3, skewed a bit
-        -0.5f, 0.5f, -1.0f, // Position 4
-        -0.5f, -0.5f, -1.0f, // Position 5
-        0.5f, -0.5f, -1.0f, // Position 6
-        0.5f, 0.5f, -1.0f, // Position 7, skewed a bit
-};*/
 
 GLushort indices[] = { 0, 1, 2, 0, 2, 3,
                        4, 5, 6, 4, 6, 7,
@@ -262,12 +380,14 @@ static gboolean drawCallback (void * gl_sink, void * gl_ctx, GLuint texture, GLu
         initGL();
     }
 
-     static GLfloat	xrot = 0;
+    static GLfloat	xrot = 0;
     //static GLfloat	yrot = 0;
     //static GLfloat	zrot = 0;
     static GTimeVal current_time;
     static glong last_sec = current_time.tv_sec;
     static gint nbFrames = 0;
+
+
 
     g_get_current_time (&current_time);
     nbFrames++ ;
@@ -359,13 +479,18 @@ min(width , Height)?
                        0.0, 0.0, 1.0, 0.0,
                        0.0, 0.0, -1.0, 1.0 };
 
-    float xrad = xrot * M_PI / 180.0;
+    float rad = xrot * M_PI / 180.0;
 
-    GLfloat xrotation_matrix[] = {
-            1.0, 0.0, 0.0, 
-            0.0, cos (xrad), -sin (xrad), 
-            1.0, -sin (xrad), cos (xrad)
-          };
+    GLfloat rot_matrix[] = {
+          cos(rad), -sin(rad), 0.0, 0.0,
+          sin(rad), cos(rad), 0.0, 0.0,
+                  0.0,     0.0, 1.0, 0.0,
+                  0.0,     0.0, 0.0, 1.0
+        };
+                  
+    /*        1.0, 0.0, 0.0, 
+            0.0, cos (rad), -sin (rad), 
+            1.0, -sin (rad), cos (rad)*/
 
     // Calculate model view transformation
     GLfloat model_matrix[] = {1.0, 0.0, 0.0, 0.0,
@@ -373,26 +498,60 @@ min(width , Height)?
               0.0, 0.0, 1.0, 0.0,
               0.0, 0.0, 0.0, 1.0};
 
-     // Set modelview-projection matrix
 
-    GLint projMatrixLoc = glGetAttribLocation ( programObject, "proj_matrix");
-    GLint viewMatrixLoc = glGetAttribLocation ( programObject, "view_matrix");
-    GLint modelMatrixLoc = glGetAttribLocation ( programObject, "model_matrix");
-    GLint rotMatrixLoc = glGetAttribLocation ( programObject, "rot_matrix");
-    glUniformMatrix4fv(projMatrixLoc, 1, GL_TRUE, projection_matrix);
-    glUniformMatrix4fv(modelMatrixLoc, 1, GL_TRUE, model_matrix);
-    glUniformMatrix4fv(viewMatrixLoc, 1, GL_TRUE, view_matrix);
-    glUniformMatrix4fv(rotMatrixLoc, 1, GL_TRUE, xrotation_matrix);
+
+    // Set modelview-projection matrix
+
+    //GLint projMatrixLoc = glGetAttribLocation ( programObject, "proj_matrix");
+    //GLint viewMatrixLoc = glGetAttribLocation ( programObject, "view_matrix");
+    //GLint modelMatrixLoc = glGetAttribLocation ( programObject, "model_matrix");
+    //GLint rotMatrixLoc = glGetAttribLocation ( programObject, "rot_matrix");
+    GLint anglexLoc = glGetUniformLocation ( programObject, "anglex");
+    GLint angleyLoc = glGetUniformLocation ( programObject, "angley");
+    GLint anglezLoc = glGetUniformLocation ( programObject, "anglez");
+    //glUniformMatrix4fv(projMatrixLoc, 1, GL_TRUE, projection_matrix);
+    //glUniformMatrix4fv(modelMatrixLoc, 1, GL_TRUE, model_matrix);
+    //glUniformMatrix4fv(viewMatrixLoc, 1, GL_TRUE, view_matrix);
+    //glUniformMatrix4fv(rotMatrixLoc, 1, GL_TRUE, rot_matrix);
+    glUniform1f(anglexLoc, rad);
+    glUniform1f(angleyLoc, rad);
+    glUniform1f(anglezLoc, rad);
 
     
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, vbo[1]); 
+    //glBindBuffer(GL_ARRAY_BUFFER, vbo[0]);
+
+    //glEnableClientState(GL_VERTEX_ATTRIB_ARRAY3_NV);
     // Load the vertex position
     GLint positionLoc = glGetAttribLocation ( programObject, "a_position" );
-    glVertexAttribPointer ( positionLoc, 3, GL_FLOAT, GL_FALSE, 0, vVertices );
+    //glVertexAttribPointer ( positionLoc, 3, GL_FLOAT, GL_FALSE, 0, vVertices );
+    //glVertexAttribPointer ( positionLoc, 3, GL_FLOAT, GL_FALSE, 0, vStripVertices);
+
+    //args based on crazy qt cube example - vbo vertex only
+
+    glEnableVertexAttribArray ( positionLoc );
+    glBindBuffer(GL_ARRAY_BUFFER, vbo[2]);
+    glVertexAttribPointer ( positionLoc, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(GLfloat), 0);
+
+    //args based on crazy qt cube example - one vbo vertex+tex
+    //glVertexAttribPointer ( positionLoc, 3, GL_FLOAT, GL_FALSE, 5 * sizeof(GLfloat), 0);
+
     // Load the texture coordinate
     GLint texCoordLoc = glGetAttribLocation ( programObject, "a_texCoord");
-    glVertexAttribPointer ( texCoordLoc, 2, GL_FLOAT, GL_FALSE, 0, vTextures);
-    glEnableVertexAttribArray ( positionLoc );
     glEnableVertexAttribArray ( texCoordLoc );
+    //glVertexAttribPointer ( texCoordLoc, 2, GL_FLOAT, GL_FALSE, 0, vTextures);
+    //glVertexAttribPointer ( texCoordLoc, 2, GL_FLOAT, GL_FALSE, 0, vStripTextures);
+
+    glBindBuffer(GL_ARRAY_BUFFER, vbo[3]);
+    glVertexAttribPointer ( texCoordLoc, 2, GL_FLOAT, GL_FALSE, 2 * sizeof(GLfloat), 0);
+
+    //args based on crazy qt cube example - one vbo vertex+tex
+    //glBindBuffer(GL_ARRAY_BUFFER, vbo[0]);
+    //glVertexAttribPointer ( texCoordLoc, 2, GL_FLOAT, GL_FALSE, 5 * sizeof(GLfloat), (const GLvoid*) (3 * sizeof(GLfloat)));
+
+
+    //glEnableVertexAttribArray ( positionLoc );
+    //glEnableVertexAttribArray ( texCoordLoc );
 
 
     glActiveTexture ( GL_TEXTURE0 );
@@ -403,7 +562,13 @@ min(width , Height)?
     GLint tex = glGetUniformLocation ( programObject, "tex");
     glUniform1i ( tex, 0 );
 
-    glDrawElements ( GL_TRIANGLES, 6, GL_UNSIGNED_SHORT, indices );
+    xrot += 5.0f;
+
+    //glDrawElements ( GL_TRIANGLES, 36, GL_UNSIGNED_SHORT, indices );
+    //glDrawElements ( GL_TRIANGLE_STRIP, 34, GL_UNSIGNED_SHORT, stripindices );
+
+    glDrawElements ( GL_TRIANGLE_STRIP, sizeof(stripindices)/sizeof(GLuint), GL_UNSIGNED_INT, 0);
+    //34, GL_UNSIGNED_SHORT, 0 );
     return GST_FLOW_OK;
 }
 
