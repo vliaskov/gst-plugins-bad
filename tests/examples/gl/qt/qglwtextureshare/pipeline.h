@@ -26,9 +26,7 @@
 
 #include <gst/gl/gstglcontext.h>
 
-#include "AsyncQueue.h"
-
-
+class QGLRenderer;
 class Pipeline : public QObject
 {
     Q_OBJECT
@@ -42,11 +40,13 @@ public:
     void configure();
     void start();
     void notifyNewFrame() {emit newFrameReady();}
+    GstSample* getFrame();// {return frame;}
+    void setFrame(GstSample *sample);// {frame = sample;}
     void stop();
     void unconfigure();
-
-    AsyncQueue<GstBuffer*> queue_input_buf;
-    AsyncQueue<GstBuffer*> queue_output_buf;
+    GMutex app_lock;
+    GCond app_cond;
+    QGLRenderer *renderer;
 
 Q_SIGNALS:
     void newFrameReady();
@@ -59,11 +59,12 @@ private:
     GMainLoop* m_loop;
     GstBus* m_bus;
     GstPipeline* m_pipeline;
+    GstSample *frame;
+
     static float m_xrot;
     static float m_yrot;
     static float m_zrot;
 
-    static void on_gst_buffer(GstElement * element, GstBuffer * buf, GstPad * pad, Pipeline* p);
     static gboolean bus_call (GstBus *bus, GstMessage *msg, Pipeline* p);
     static gboolean sync_bus_call (GstBus *bus, GstMessage *msg, Pipeline* p);
 };

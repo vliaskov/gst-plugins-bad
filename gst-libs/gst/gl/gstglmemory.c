@@ -681,6 +681,9 @@ _download_memory (GstGLContext * context, GstGLMemory * gl_mem)
       goto read_pixels;
     }
 
+    GST_LOG ("downloading memory %p, tex %u into %p with pbo %u",
+      gl_mem, gl_mem->tex_id, gl_mem->data, gl_mem->transfer_pbo);
+
     /* FIXME: COPY! use glMapBuffer + glSync everywhere to remove this */
     plane_start = _find_plane_frame_start (gl_mem);
     memcpy ((guint8 *) gl_mem->data + plane_start, map_data, size);

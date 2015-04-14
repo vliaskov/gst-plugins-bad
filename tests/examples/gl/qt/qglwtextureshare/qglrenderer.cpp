@@ -49,7 +49,8 @@ QGLWidget (parent),
 videoLoc (videoLocation),
 gst_thread (NULL),
 closing (false),
-frame (NULL)
+frame (NULL),
+old_frame (NULL)
 {
   move (20, 10);
   resize (640, 480);
@@ -96,6 +97,7 @@ QGLRenderer::initializeGL ()
   this->gst_thread =
       new GstThread (display, context, this->videoLoc,
       SLOT (newFrame ()), this);
+  fprintf(stderr, "%s FramePipeline renderer %p thread %p\n", __func__, this, this->gst_thread);
   this->makeCurrent ();
 
   QObject::connect (this->gst_thread, SIGNAL (finished ()),
@@ -108,8 +110,9 @@ QGLRenderer::initializeGL ()
   //glShadeModel(GL_FLAT);
   //glEnable(GL_DEPTH_TEST);
   //glEnable(GL_CULL_FACE);
-  glEnable (GL_TEXTURE_2D);     // Enable Texture Mapping
+  //glEnable (GL_TEXTURE_2D);     // Enable Texture Mapping
 
+  //g_cond_signal (&this->app_cond);
   this->gst_thread->start ();
 }
 
@@ -128,18 +131,21 @@ QGLRenderer::resizeGL (int width, int height)
 void
 QGLRenderer::newFrame ()
 {
+  g_assert (this->gst_thread);
+  fprintf(stderr, "%s FramePipelinerenderer %p thread %p\n", __func__, this, this->gst_thread);
   Pipeline *pipeline = this->gst_thread->getPipeline ();
   if (!pipeline)
     return;
 
   /* frame is initialized as null */
-  if (this->frame)
-    pipeline->queue_output_buf.put (this->frame);
+  //if (this->old_frame)
+    //gst_sample_unref (this->old_frame);
 
-  this->frame = pipeline->queue_input_buf.get ();
+  this->frame = this->gst_thread->getPipeline () -> getFrame();
 
   /* direct call to paintGL (no queued) */
   this->updateGL ();
+  this->old_frame = this->frame;
 }
 
 static void
@@ -161,9 +167,11 @@ QGLRenderer::paintGL ()
     GstVideoInfo v_info;
     GstVideoFrame v_frame;
     GstVideoMeta *v_meta;
+    GstBuffer *buffer;
 
-    mem = gst_buffer_peek_memory (this->frame, 0);
-    v_meta = gst_buffer_get_video_meta (this->frame);
+    buffer = gst_sample_get_buffer (this->frame);
+    mem = gst_buffer_peek_memory (buffer, 0);
+    v_meta = gst_buffer_get_video_meta (buffer);
 
     Q_ASSERT (gst_is_gl_memory (mem));
 
@@ -174,7 +182,7 @@ QGLRenderer::paintGL ()
     gst_video_info_set_format (&v_info, v_meta->format, v_meta->width,
         v_meta->height);
 
-    gst_video_frame_map (&v_frame, &v_info, this->frame,
+    gst_video_frame_map (&v_frame, &v_info, buffer,
         (GstMapFlags) (GST_MAP_READ | GST_MAP_GL));
 
     tex_id = *(guint *) v_frame.data[0];
@@ -269,6 +277,8 @@ QGLRenderer::paintGL ()
     glBindTexture (GL_TEXTURE_2D, 0);
 
     gst_video_frame_unmap (&v_frame);
+
+    g_cond_signal (&(this->gst_thread->getPipeline()->app_cond));
   }
 }
 

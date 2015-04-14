@@ -54,7 +54,8 @@ private:
     QString videoLoc;
     GstThread *gst_thread;
     bool closing;
-    GstBuffer *frame;
+    GstSample *frame;
+    GstSample *old_frame;
 };
 
 #endif // QGLRENDERER_H

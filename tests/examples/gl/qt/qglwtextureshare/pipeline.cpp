@@ -2,6 +2,7 @@
  * GStreamer
  * Copyright (C) 2009 Julien Isorce <julien.isorce@gmail.com>
  * Copyright (C) 2009 Andrey Nechypurenko <andreynech@gmail.com>
+ * Copyright (C) 2015 Vasilis Liaskovitis <vliaskov@gmail.com>
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Library General Public
@@ -19,6 +20,7 @@
  * Boston, MA 02110-1301, USA.
  */
 
+#include "qglrenderer.h"
 #include "pipeline.h"
 
 
@@ -31,13 +33,68 @@ m_loop (NULL),
 m_bus (NULL),
 m_pipeline (NULL)
 {
+  fprintf(stderr, "%s FramePipeline %p\n", __func__, this);
   this->display = display;
   this->context = context;
-  this->configure ();
+  this->renderer = (QGLRenderer*)parent;
+  //this->configure ();
 }
 
 Pipeline::~Pipeline ()
 {
+}
+
+static gboolean
+myexecuteCallback (gpointer data)
+{
+  Pipeline *p = (Pipeline*) data;
+  g_mutex_lock (&p->app_lock);
+
+  p->notifyNewFrame ();
+  //PaintGL ();
+
+  //g_cond_signal (&p->app_cond);
+  g_mutex_unlock (&p->app_lock);
+
+  return FALSE;
+}
+
+GstSample* Pipeline::getFrame()
+{
+    GstBuffer *buffer;
+    buffer = gst_sample_get_buffer (this->frame);
+    fprintf(stderr, "%s framepipeline %p sample %p buffer %p\n", __func__, this, this->frame, buffer);
+    return frame;
+}
+
+void Pipeline::setFrame(GstSample *sample)
+{
+    GstBuffer *buffer;
+    this->frame = sample;
+    buffer = gst_sample_get_buffer (this->frame);
+    fprintf(stderr, "%s framepipeline %p sample %p buffer %p\n", __func__, this, this->frame, buffer);
+}
+
+static gboolean
+on_client_draw (GstElement * glsink, GstGLContext * context, GstSample * sample,
+    gpointer data)
+{
+  Pipeline* pipeline = (Pipeline*) data;
+  g_mutex_lock (&pipeline->app_lock);
+  //g_cond_wait (&pipeline->app_cond, &pipeline->app_lock);
+  pipeline->setFrame(sample);
+  //fprintf(stderr, "%s framepipeline %p sample frame %p\n", __func__, pipeline,
+    //      pipeline->getFrame());
+  //g_idle_add_full (G_PRIORITY_HIGH, myexecuteCallback, data, NULL);
+  pipeline->notifyNewFrame ();
+
+  //pipeline->renderer->newFrame();//updateGL ();
+
+  //g_idle_add (myexecuteCallback, data);
+  g_cond_wait (&pipeline->app_cond, &pipeline->app_lock);
+  g_mutex_unlock (&pipeline->app_lock);
+
+  return TRUE;
 }
 
 void
@@ -55,18 +112,23 @@ Pipeline::configure ()
         ("videotestsrc ! "
             "video/x-raw, width=640, height=480, "
             "framerate=(fraction)30/1 ! "
-            "gleffects effect=5 ! fakesink sync=1", NULL));
+            " glimagesink name=glimagesink0", NULL));
   } else {
     QByteArray ba = m_videoLocation.toLocal8Bit ();
     qDebug ("Loading video: %s", ba.data ());
     gchar *pipeline = g_strdup_printf ("filesrc name=f ! "
-        "decodebin ! gleffects effect=5 ! " "fakesink sync=1");
+        "decodebin ! glimagesink name=glimagesink0");
     m_pipeline = GST_PIPELINE (gst_parse_launch (pipeline, NULL));
     GstElement *f = gst_bin_get_by_name (GST_BIN (m_pipeline), "f");
     g_object_set (G_OBJECT (f), "location", ba.data (), NULL);
     gst_object_unref (GST_OBJECT (f));
     g_free (pipeline);
   }
+
+  GstElement *glimagesink = gst_bin_get_by_name (GST_BIN (m_pipeline), "glimagesink0");                           
+  g_signal_connect (G_OBJECT (glimagesink), "client-draw",                                          
+      G_CALLBACK (on_client_draw), this);                                                           
+  gst_object_unref (glimagesink); 
 
   m_bus = gst_pipeline_get_bus (GST_PIPELINE (m_pipeline));
   gst_bus_add_watch (m_bus, (GstBusFunc) bus_call, this);
@@ -88,11 +150,6 @@ void
 Pipeline::start ()
 {
   // set a callback to retrieve the gst gl textures
-  GstElement *fakesink = gst_bin_get_by_name (GST_BIN (this->m_pipeline),
-      "fakesink0");
-  g_object_set (G_OBJECT (fakesink), "signal-handoffs", TRUE, NULL);
-  g_signal_connect (fakesink, "handoff", G_CALLBACK (on_gst_buffer), this);
-  gst_object_unref (fakesink);
 
   GstStateChangeReturn ret =
       gst_element_set_state (GST_ELEMENT (this->m_pipeline), GST_STATE_PLAYING);
@@ -115,29 +172,6 @@ Pipeline::start ()
 #endif
 }
 
-/* fakesink handoff callback */
-void
-Pipeline::on_gst_buffer (GstElement * element,
-    GstBuffer * buf, GstPad * pad, Pipeline * p)
-{
-  Q_UNUSED (pad)
-      Q_UNUSED (element)
-
-      /* ref then push buffer to use it in qt */
-      gst_buffer_ref (buf);
-  p->queue_input_buf.put (buf);
-
-  if (p->queue_input_buf.size () > 3)
-    p->notifyNewFrame ();
-
-  /* pop then unref buffer we have finished to use in qt */
-  if (p->queue_output_buf.size () > 3) {
-    GstBuffer *buf_old = (p->queue_output_buf.get ());
-    if (buf_old)
-      gst_buffer_unref (buf_old);
-  }
-}
-
 void
 Pipeline::stop ()
 {
@@ -153,15 +187,8 @@ Pipeline::unconfigure ()
 {
   gst_element_set_state (GST_ELEMENT (this->m_pipeline), GST_STATE_NULL);
 
-  GstBuffer *buf;
-  while (this->queue_input_buf.size ()) {
-    buf = (GstBuffer *) (this->queue_input_buf.get ());
-    gst_buffer_unref (buf);
-  }
-  while (this->queue_output_buf.size ()) {
-    buf = (GstBuffer *) (this->queue_output_buf.get ());
-    gst_buffer_unref (buf);
-  }
+  //GstBuffer *buf;
+  //gst_sample_unref (frame);
 
   gst_object_unref (m_pipeline);
 }

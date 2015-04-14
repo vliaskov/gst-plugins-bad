@@ -31,8 +31,11 @@ GstThread::GstThread(GstGLDisplay *display,
     QThread(parent),
     m_videoLocation(videoLocation)
 {
+    fprintf(stderr, "%s FramePipeline %p start\n", __func__, this);
     m_pipeline = new Pipeline(display, context, m_videoLocation, this);
-    QObject::connect(m_pipeline, SIGNAL(newFrameReady()), this->parent(), renderer_slot, Qt::QueuedConnection);
+    QObject::connect(m_pipeline, SIGNAL(newFrameReady()), this->parent(),
+            renderer_slot, Qt::QueuedConnection);
+    fprintf(stderr, "%s FramePipeline %p end\n", __func__, this);
 }
 
 GstThread::~GstThread()
@@ -48,6 +51,8 @@ void GstThread::stop()
 void GstThread::run()
 {
     qDebug("Starting gst pipeline");
+  //this->configure ();
+    m_pipeline->configure(); //it runs the gmainloop on win32
     m_pipeline->start(); //it runs the gmainloop on win32
 
 #ifndef Q_WS_WIN
