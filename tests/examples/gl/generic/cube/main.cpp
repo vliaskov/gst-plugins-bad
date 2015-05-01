@@ -91,18 +91,7 @@ GLfloat vVertices[] = {
         FRONTX, FRONTY + HEIGHT, FRONTZ + DEPTH, // Position 7
 };
 
-GLfloat vTextures[] = { 
-        0.0f, 0.0f, // TexCoord 0
-        0.0f, 1.0f, // TexCoord 1
-        1.0f, 1.0f, // TexCoord 2
-        1.0f, 0.0f, // TexCoord 3
-        0.0f, 0.0f, // TexCoord 0
-        0.0f, 1.0f, // TexCoord 1
-        1.0f, 1.0f, // TexCoord 2
-        1.0f, 0.0f // TexCoord 3
-};
-
-GLfloat vStrip[] = { 
+GLfloat v_vertices[] = { 
 
         FRONTX, FRONTY, FRONTZ + DEPTH, 0.0, 0.0,
         FRONTX + WIDTH, FRONTY, FRONTZ + DEPTH, 1.0, 0.0,
@@ -136,6 +125,41 @@ GLfloat vStrip[] = {
 
 };
 
+  const GLfloat vvertices[] = {
+ /*|     Vertex     | TexCoord |*/ 
+    /* front face */
+     1.0,  1.0, -1.0, 1.0, 0.0,
+     1.0, -1.0, -1.0, 1.0, 1.0,
+    -1.0, -1.0, -1.0, 0.0, 1.0,
+    -1.0,  1.0, -1.0, 0.0, 0.0,
+    /* back face */
+     1.0,  1.0,  1.0, 1.0, 0.0,
+    -1.0,  1.0,  1.0, 0.0, 0.0,
+    -1.0, -1.0,  1.0, 0.0, 1.0,
+     1.0, -1.0,  1.0, 1.0, 1.0,
+    /* right face */
+     1.0,  1.0,  1.0, 1.0, 0.0,
+     1.0, -1.0,  1.0, 0.0, 0.0,
+     1.0, -1.0, -1.0, 0.0, 1.0,
+     1.0,  1.0, -1.0, 1.0, 1.0,
+    /* left face */
+    -1.0,  1.0,  1.0, 1.0, 0.0,
+    -1.0,  1.0, -1.0, 1.0, 1.0,
+    -1.0, -1.0, -1.0, 0.0, 1.0,
+    -1.0, -1.0,  1.0, 0.0, 0.0,
+    /* top face */
+     1.0, -1.0,  1.0, 1.0, 0.0,
+    -1.0, -1.0,  1.0, 0.0, 0.0,
+    -1.0, -1.0, -1.0, 0.0, 1.0,
+     1.0, -1.0, -1.0, 1.0, 1.0,
+    /* bottom face */
+     1.0,  1.0,  1.0, 1.0, 0.0,
+     1.0,  1.0, -1.0, 1.0, 1.0,
+    -1.0,  1.0, -1.0, 0.0, 1.0,
+    -1.0,  1.0,  1.0, 0.0, 0.0
+  };
+
+/* *INDENT-ON* */
 GLfloat vStripVertices[] = { 
 
         FRONTX, FRONTY, FRONTZ + DEPTH,
@@ -212,6 +236,21 @@ GLuint stripindices[] = {
   16, 16, 17, 18, 19, 19, // Face 4 - triangle strip (v16, v17, v18, v19)
   20, 20, 21, 22, 23,      // Face 5 - triangle strip (v20, v21, v22, v23)
 };
+
+GLushort indices[] = {
+    0, 1, 2,
+    0, 2, 3,
+    4, 5, 6,
+    4, 6, 7,
+    8, 9, 10,
+    8, 10, 11,
+    12, 13, 14,
+    12, 14, 15,
+    16, 17, 18,
+    16, 18, 19,
+    20, 21, 22,
+    20, 22, 23
+  };
 
 GLint initGL();
 GLuint LoadShader ( GLenum type, const char *shaderSrc );
@@ -290,27 +329,6 @@ GLint initGL() {
         return GL_FALSE;
     }
 
-    // Generate VBOs
-    glGenBuffers(4, vbo); 
-
-    // Transfer vertex data to VBO 0
-    glBindBuffer(GL_ARRAY_BUFFER, vbo[0]);
-    glBufferData(GL_ARRAY_BUFFER, 24 * 5 * sizeof(GLfloat), vStrip,
-      GL_STATIC_DRAW);
-
-     // Transfer index data to VBO 1
-    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, vbo[1]);
-    glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(stripindices), stripindices,
-      GL_STATIC_DRAW);
-
-    glBindBuffer(GL_ARRAY_BUFFER, vbo[2]);
-    glBufferData(GL_ARRAY_BUFFER, sizeof(vStripVertices), vStripVertices,
-      GL_STATIC_DRAW);
-
-    glBindBuffer(GL_ARRAY_BUFFER, vbo[3]);
-    glBufferData(GL_ARRAY_BUFFER, sizeof(vStripTextures), vStripTextures,
-      GL_STATIC_DRAW);
-
     return GL_TRUE;
 }
 
@@ -365,13 +383,7 @@ static gboolean reshapeCallback (void *gl_sink, void *gl_ctx, GLuint width, GLui
 }
 
 
-GLushort indices[] = { 0, 1, 2, 0, 2, 3,
-                       4, 5, 6, 4, 6, 7,
-                       0, 4, 5, 0, 5, 1,  
-                       1, 2, 5, 1, 5, 6,  
-                       0, 4, 7, 0, 7, 3,
-                       3, 7, 6, 3, 6, 2
-};
+
 //client draw callback
 static gboolean drawCallback (void * gl_sink, void * gl_ctx, GLuint texture, GLuint width, GLuint height, gpointer data)
 {
@@ -426,54 +438,6 @@ static gboolean drawCallback (void * gl_sink, void * gl_ctx, GLuint texture, GLu
                        0.0, h, 0.0, 0.0,
                        0.0, 0.0, a, 1.0,
                        0.0, 0.0, b, 0.0};
-/*
-valType h = glm::cos(valType(0.5) * rad) / glm::sin(valType(0.5) * rad);
-            valType w = h * height / width; ///todo max(width , Height) /
-min(width , Height)?
-
-            detail::tmat4x4<valType> Result(valType(0));
-            Result[0][0] = w;
-            Result[1][1] = h;
-            Result[2][2] = - (zFar + zNear) / (zFar - zNear);
-            Result[2][3] = - valType(1);
-            Result[3][2] = - (valType(2) * zFar * zNear) / (zFar - zNear);
-            return Result;
-    */
-
- /*GLM_FUNC_QUALIFIER detail::tmat4x4<T, P> lookAt
-  (
-    detail::tvec3<T, P> const & eye,
-    detail::tvec3<T, P> const & center,
-    detail::tvec3<T, P> const & up
-  )
-  {
-    detail::tvec3<T, P> f(normalize(center - eye));
-    detail::tvec3<T, P> s(normalize(cross(f, up)));
-    detail::tvec3<T, P> u(cross(s, f));
-
-    detail::tmat4x4<T, P> Result(1);
-    Result[0][0] = s.x;
-    Result[1][0] = s.y;
-    Result[2][0] = s.z;
-    Result[0][1] = u.x;
-    Result[1][1] = u.y;
-    Result[2][1] = u.z;
-    Result[0][2] =-f.x;
-    Result[1][2] =-f.y;
-    Result[2][2] =-f.z;
-    Result[3][0] =-dot(s, eye);
-    Result[3][1] =-dot(u, eye);
-    Result[3][2] = dot(f, eye);
-    return Result;
-  }
-    eye = (0, 0, 1);
-    center = 0, 0, 0;
-    up = (0, 1, 0);
-    f = center - eye = (0, 0, -1);
-    s = (-1, 0, 0); FIX: ii think it is s = (1, 0, 0);
-    u = (0, -1, 0); FIX: I think it is u = (0, 1, 0);
-    */
-
     GLfloat view_matrix[] = {1.0, 0.0, 0.0, 0.0,
                        0.0, 1.0, 0.0, 0.0,
                        0.0, 0.0, 1.0, 0.0,
@@ -488,87 +452,49 @@ min(width , Height)?
                   0.0,     0.0, 0.0, 1.0
         };
                   
-    /*        1.0, 0.0, 0.0, 
-            0.0, cos (rad), -sin (rad), 
-            1.0, -sin (rad), cos (rad)*/
-
     // Calculate model view transformation
     GLfloat model_matrix[] = {1.0, 0.0, 0.0, 0.0,
               0.0, 1.0, 0.0, 0.0,
               0.0, 0.0, 1.0, 0.0,
               0.0, 0.0, 0.0, 1.0};
 
-
-
     // Set modelview-projection matrix
+    glEnable (GL_DEPTH_TEST);
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+    //glClearColor (cube_filter->red, cube_filter->green, cube_filter->blue, 0.0);
 
-    //GLint projMatrixLoc = glGetAttribLocation ( programObject, "proj_matrix");
-    //GLint viewMatrixLoc = glGetAttribLocation ( programObject, "view_matrix");
-    //GLint modelMatrixLoc = glGetAttribLocation ( programObject, "model_matrix");
-    //GLint rotMatrixLoc = glGetAttribLocation ( programObject, "rot_matrix");
     GLint anglexLoc = glGetUniformLocation ( programObject, "anglex");
     GLint angleyLoc = glGetUniformLocation ( programObject, "angley");
     GLint anglezLoc = glGetUniformLocation ( programObject, "anglez");
-    //glUniformMatrix4fv(projMatrixLoc, 1, GL_TRUE, projection_matrix);
-    //glUniformMatrix4fv(modelMatrixLoc, 1, GL_TRUE, model_matrix);
-    //glUniformMatrix4fv(viewMatrixLoc, 1, GL_TRUE, view_matrix);
-    //glUniformMatrix4fv(rotMatrixLoc, 1, GL_TRUE, rot_matrix);
     glUniform1f(anglexLoc, rad);
     glUniform1f(angleyLoc, rad);
     glUniform1f(anglezLoc, rad);
 
-    
-    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, vbo[1]); 
-    //glBindBuffer(GL_ARRAY_BUFFER, vbo[0]);
-
-    //glEnableClientState(GL_VERTEX_ATTRIB_ARRAY3_NV);
+    glEnableClientState (GL_TEXTURE_COORD_ARRAY);
+    glEnableClientState (GL_VERTEX_ARRAY);
     // Load the vertex position
     GLint positionLoc = glGetAttribLocation ( programObject, "a_position" );
-    //glVertexAttribPointer ( positionLoc, 3, GL_FLOAT, GL_FALSE, 0, vVertices );
-    //glVertexAttribPointer ( positionLoc, 3, GL_FLOAT, GL_FALSE, 0, vStripVertices);
-
-    //args based on crazy qt cube example - vbo vertex only
-
+    glVertexAttribPointer ( positionLoc, 3, GL_FLOAT, GL_FALSE, 5 * sizeof(GLfloat), v_vertices);
     glEnableVertexAttribArray ( positionLoc );
-    glBindBuffer(GL_ARRAY_BUFFER, vbo[2]);
-    glVertexAttribPointer ( positionLoc, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(GLfloat), 0);
-
-    //args based on crazy qt cube example - one vbo vertex+tex
-    //glVertexAttribPointer ( positionLoc, 3, GL_FLOAT, GL_FALSE, 5 * sizeof(GLfloat), 0);
 
     // Load the texture coordinate
     GLint texCoordLoc = glGetAttribLocation ( programObject, "a_texCoord");
+    glVertexAttribPointer ( texCoordLoc, 2, GL_FLOAT, GL_FALSE, 5 * sizeof(GLfloat), &v_vertices[3]);
     glEnableVertexAttribArray ( texCoordLoc );
-    //glVertexAttribPointer ( texCoordLoc, 2, GL_FLOAT, GL_FALSE, 0, vTextures);
-    //glVertexAttribPointer ( texCoordLoc, 2, GL_FLOAT, GL_FALSE, 0, vStripTextures);
-
-    glBindBuffer(GL_ARRAY_BUFFER, vbo[3]);
-    glVertexAttribPointer ( texCoordLoc, 2, GL_FLOAT, GL_FALSE, 2 * sizeof(GLfloat), 0);
-
-    //args based on crazy qt cube example - one vbo vertex+tex
-    //glBindBuffer(GL_ARRAY_BUFFER, vbo[0]);
-    //glVertexAttribPointer ( texCoordLoc, 2, GL_FLOAT, GL_FALSE, 5 * sizeof(GLfloat), (const GLvoid*) (3 * sizeof(GLfloat)));
-
-
-    //glEnableVertexAttribArray ( positionLoc );
-    //glEnableVertexAttribArray ( texCoordLoc );
-
 
     glActiveTexture ( GL_TEXTURE0 );
     glBindTexture (GL_TEXTURE_2D, texture);
-    //glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
-    //glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
-    //Set the texture sampler to texture unit 0
     GLint tex = glGetUniformLocation ( programObject, "tex");
     glUniform1i ( tex, 0 );
 
-    xrot += 5.0f;
+    //xrot += 5.0f;
 
-    //glDrawElements ( GL_TRIANGLES, 36, GL_UNSIGNED_SHORT, indices );
+    glDrawElements ( GL_TRIANGLES, 36, GL_UNSIGNED_SHORT, indices );
     //glDrawElements ( GL_TRIANGLE_STRIP, 34, GL_UNSIGNED_SHORT, stripindices );
 
-    glDrawElements ( GL_TRIANGLE_STRIP, sizeof(stripindices)/sizeof(GLuint), GL_UNSIGNED_INT, 0);
-    //34, GL_UNSIGNED_SHORT, 0 );
+    glDisableVertexAttribArray ( positionLoc );
+    glDisableVertexAttribArray ( texCoordLoc );
+    glDisable (GL_DEPTH_TEST);
     return GST_FLOW_OK;
 }
 

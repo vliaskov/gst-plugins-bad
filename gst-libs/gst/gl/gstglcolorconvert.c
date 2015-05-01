@@ -1472,7 +1472,7 @@ _do_convert_draw (GstGLContext * context, GstGLColorConvert * convert)
     g_free (scale_name);
   }
 
-  gl->DrawElements (GL_TRIANGLES, 6, GL_UNSIGNED_SHORT, indices);
+  gl->DrawElements (GL_TRIANGLES, 36, GL_UNSIGNED_SHORT, indices);
 
   gl->DisableVertexAttribArray (convert->shader_attr_position_loc);
   gl->DisableVertexAttribArray (convert->shader_attr_texture_loc);
