@@ -47,9 +47,15 @@ static const gchar *simple_vertex_shader_str_gles2 =
       "uniform mat4 rot_matrix; \n"
       "uniform mat4 view_matrix; \n"
       "uniform mat4 model_matrix; \n"
+      "uniform float anglex;\n"
+      "uniform float angley;\n"
+      "uniform float anglez;\n"
+      "mat4 rotz_matrix = mat4(cos(anglez), -sin(anglez), 0.0, 0.0, sin(anglez), cos(anglez), 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0);\n"
+      "mat4 roty_matrix = mat4(cos(angley), 0.0, sin(angley), 0.0, 0.0, 1.0, 0.0, 0.0, -sin(angley), 0.0, cos(angley), 0.0, 0.0, 0.0, 0.0, 1.0);\n"
+      "mat4 rotx_matrix = mat4(1.0, 0.0, 0.0, 0.0, 0.0, cos(anglex), -sin(anglex), 0.0, 0.0, sin(anglex), cos(anglex), 0.0, 0.0, 0.0, 0.0, 1.0);\n"
       "void main()                  \n"
       "{                            \n"
-      "   gl_Position = gl_ProjectionMatrix * gl_ModelViewMatrix * a_position; \n"
+      "   gl_Position = gl_ProjectionMatrix * gl_ModelViewMatrix * rotz_matrix * roty_matrix * rotx_matrix * a_position; \n"
       "   v_texCoord = a_texCoord;  \n"
       "}                            \n";
       //"   gl_Position = a_position; \n"
@@ -233,6 +239,43 @@ GLfloat vTextures[] = {
         1.0f, 0.0f // TexCoord 3
 };
 
+GLfloat vCompact[] = { 
+    /* front face */
+        FRONTX + WIDTH, FRONTY + HEIGHT, FRONTZ, 1.0, 0.0,
+        FRONTX + WIDTH, FRONTY, FRONTZ, 1.0, 1.0,
+        FRONTX, FRONTY, FRONTZ, 0.0, 1.0,
+        FRONTX, FRONTY + HEIGHT, FRONTZ, 0.0, 0.0,
+
+    /* back face */
+        FRONTX + WIDTH, FRONTY + HEIGHT, FRONTZ + DEPTH, 1.0, 0.0,
+        FRONTX, FRONTY + HEIGHT, FRONTZ + DEPTH, 0.0, 0.0,
+        FRONTX, FRONTY, FRONTZ + DEPTH, 0.0, 1.0,
+        FRONTX + WIDTH, FRONTY, FRONTZ + DEPTH, 1.0, 1.0,
+    /* right face */
+        FRONTX + WIDTH, FRONTY + HEIGHT, FRONTZ + DEPTH, 1.0, 0.0,
+        FRONTX + WIDTH, FRONTY, FRONTZ + DEPTH, 0.0, 0.0,
+        FRONTX + WIDTH, FRONTY, FRONTZ, 0.0, 1.0,
+        FRONTX + WIDTH, FRONTY + HEIGHT, FRONTZ, 1.0, 1.0,
+    /* left face */
+        FRONTX, FRONTY + HEIGHT, FRONTZ + DEPTH, 1.0, 0.0,
+        FRONTX, FRONTY + HEIGHT, FRONTZ, 1.0, 1.0,
+        FRONTX, FRONTY, FRONTZ, 0.0, 1.0,
+        FRONTX, FRONTY, FRONTZ + DEPTH, 0.0, 0.0,
+    /* top face */
+        FRONTX + WIDTH, FRONTY, FRONTZ + DEPTH, 1.0, 0.0,
+        FRONTX, FRONTY, FRONTZ + DEPTH, 0.0, 0.0,
+        FRONTX, FRONTY, FRONTZ, 0.0, 1.0,
+        FRONTX + WIDTH, FRONTY, FRONTZ, 1.0, 1.0,
+    /* bottom face */
+        FRONTX + WIDTH, FRONTY + HEIGHT, FRONTZ + DEPTH, 1.0, 0.0,
+        FRONTX + WIDTH, FRONTY + HEIGHT, FRONTZ, 1.0, 1.0,
+        FRONTX, FRONTY + HEIGHT, FRONTZ, 0.0, 1.0,
+        FRONTX, FRONTY + HEIGHT, FRONTZ + DEPTH, 0.0, 0.0,
+
+
+
+};
+
 /*GLfloat vVertCoord[] = { 
      // For cube we would need only 8 vertices but we have to
      // duplicate vertex for each face because texture coordinate
@@ -246,14 +289,30 @@ GLfloat vTextures[] = {
         0.5f, -0.5f, -1.0f, // Position 6
         0.5f, 0.5f, -1.0f, // Position 7, skewed a bit
 };*/
-
+/*
 GLushort indices[] = { 0, 1, 2, 0, 2, 3,
                        4, 5, 6, 4, 6, 7,
                        0, 4, 5, 0, 5, 1,  
                        1, 2, 5, 1, 5, 6,  
                        0, 4, 7, 0, 7, 3,
                        3, 7, 6, 3, 6, 2
-};
+};*/
+
+  GLushort indices[] = {
+    0, 1, 2,
+    0, 2, 3,
+    4, 5, 6,
+    4, 6, 7,
+    8, 9, 10,
+    8, 10, 11,
+    12, 13, 14,
+    12, 14, 15,
+    16, 17, 18,
+    16, 18, 19,
+    20, 21, 22,
+    20, 22, 23
+  };
+
 //client draw callback
 static gboolean drawCallback (void * gl_sink, void * gl_ctx, GLuint texture, GLuint width, GLuint height, gpointer data)
 {
@@ -262,12 +321,14 @@ static gboolean drawCallback (void * gl_sink, void * gl_ctx, GLuint texture, GLu
         initGL();
     }
 
-     static GLfloat	xrot = 0;
+     static GLfloat	rot = 0;
     //static GLfloat	yrot = 0;
     //static GLfloat	zrot = 0;
     static GTimeVal current_time;
     static glong last_sec = current_time.tv_sec;
     static gint nbFrames = 0;
+
+    float rad = rot * M_PI / 180.0;
 
     g_get_current_time (&current_time);
     nbFrames++ ;
@@ -359,12 +420,11 @@ min(width , Height)?
                        0.0, 0.0, 1.0, 0.0,
                        0.0, 0.0, -1.0, 1.0 };
 
-    float xrad = xrot * M_PI / 180.0;
 
     GLfloat xrotation_matrix[] = {
             1.0, 0.0, 0.0, 
-            0.0, cos (xrad), -sin (xrad), 
-            1.0, -sin (xrad), cos (xrad)
+            0.0, cos (rad), -sin (rad), 
+            1.0, -sin (rad), cos (rad)
           };
 
     // Calculate model view transformation
@@ -384,16 +444,32 @@ min(width , Height)?
     glUniformMatrix4fv(viewMatrixLoc, 1, GL_TRUE, view_matrix);
     glUniformMatrix4fv(rotMatrixLoc, 1, GL_TRUE, xrotation_matrix);
 
+    glEnableClientState (GL_TEXTURE_COORD_ARRAY);
+    glEnableClientState (GL_VERTEX_ARRAY);
     
     // Load the vertex position
     GLint positionLoc = glGetAttribLocation ( programObject, "a_position" );
-    glVertexAttribPointer ( positionLoc, 3, GL_FLOAT, GL_FALSE, 0, vVertices );
+    //glVertexAttribPointer ( positionLoc, 3, GL_FLOAT, GL_FALSE, 0, vVertices );
+    glVertexAttribPointer (positionLoc, 3, GL_FLOAT, GL_FALSE,
+      5 * sizeof (GLfloat), vCompact);
+
+
     // Load the texture coordinate
     GLint texCoordLoc = glGetAttribLocation ( programObject, "a_texCoord");
-    glVertexAttribPointer ( texCoordLoc, 2, GL_FLOAT, GL_FALSE, 0, vTextures);
+    //glVertexAttribPointer ( texCoordLoc, 2, GL_FLOAT, GL_FALSE, 0, vTextures);
+    glVertexAttribPointer (texCoordLoc, 2, GL_FLOAT, GL_FALSE,
+      5 * sizeof (GLfloat), &vCompact[3]);
+
     glEnableVertexAttribArray ( positionLoc );
     glEnableVertexAttribArray ( texCoordLoc );
 
+    GLint anglexLoc = glGetUniformLocation ( programObject, "anglex");
+    GLint angleyLoc = glGetUniformLocation ( programObject, "angley");
+    GLint anglezLoc = glGetUniformLocation ( programObject, "anglez");
+    glUniform1f(anglexLoc, rad);
+    glUniform1f(angleyLoc, rad);
+    glUniform1f(anglezLoc, rad);
+    rot += 3.0f;
 
     glActiveTexture ( GL_TEXTURE0 );
     glBindTexture (GL_TEXTURE_2D, texture);
@@ -403,7 +479,7 @@ min(width , Height)?
     GLint tex = glGetUniformLocation ( programObject, "tex");
     glUniform1i ( tex, 0 );
 
-    glDrawElements ( GL_TRIANGLES, 6, GL_UNSIGNED_SHORT, indices );
+    glDrawElements ( GL_TRIANGLES, 36, GL_UNSIGNED_SHORT, indices );
     return GST_FLOW_OK;
 }
 
