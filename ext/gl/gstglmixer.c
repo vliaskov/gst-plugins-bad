@@ -59,6 +59,8 @@ static GstBuffer *_default_pad_upload_buffer (GstGLMixer * mix,
 
 static void gst_gl_mixer_set_context (GstElement * element,
     GstContext * context);
+static gboolean _clean_upload (GstAggregator * agg, GstAggregatorPad * aggpad,
+    gpointer udata);
 
 enum
 {
@@ -575,10 +577,28 @@ static gboolean gst_gl_mixer_set_allocation (GstGLMixer * mix,
 static void gst_gl_mixer_finalize (GObject * object);
 
 static void
+gst_gl_mixer_release_pad (GstElement * element, GstPad * pad)
+{
+  GstAggregatorPad *aggpad;
+  GstAggregator *agg = NULL;
+
+  agg = GST_AGGREGATOR (element);
+  aggpad = GST_AGGREGATOR_PAD (pad);
+
+
+  GST_ELEMENT_CLASS (gst_gl_mixer_parent_class)->release_pad (GST_ELEMENT
+      (agg), pad);
+  _clean_upload (agg, aggpad, NULL);
+
+  return;
+}
+
+static void
 gst_gl_mixer_class_init (GstGLMixerClass * klass)
 {
   GObjectClass *gobject_class;
   GstElementClass *element_class;
+  GstElementClass *gstelement_class = (GstElementClass *) klass;
 
   GstVideoAggregatorClass *videoaggregator_class =
       (GstVideoAggregatorClass *) klass;
@@ -602,6 +622,8 @@ gst_gl_mixer_class_init (GstGLMixerClass * klass)
       gst_static_pad_template_get (&sink_factory));
 
   element_class->set_context = GST_DEBUG_FUNCPTR (gst_gl_mixer_set_context);
+
+  gstelement_class->release_pad = GST_DEBUG_FUNCPTR (gst_gl_mixer_release_pad);
 
   agg_class->sinkpads_type = GST_TYPE_GL_MIXER_PAD;
   agg_class->sink_query = gst_gl_mixer_sink_query;
